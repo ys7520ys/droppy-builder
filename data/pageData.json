@@ -1,0 +1,37 @@
+{
+  "H8cmwCR0aM0tliiARRM6": {
+    "createdAt": "2025-05-24T01:12:00.000Z",
+    "domain": "shopy.droppy.kr",
+    "headerType": "타입B",
+    "menu": [
+      { "id": 1, "label": "회사 소개", "link": "/section/page-1" },
+      { "id": 2, "label": "전시 소개", "link": "/section/page-2" },
+      { "id": 3, "label": "고객 후기", "link": "/section/page-3" },
+      { "id": 4, "label": "문의하기", "link": "/section/page-4" }
+    ],
+    "pages": [
+      {
+        "components": [
+          {
+            "id": "C07YZ80054A",
+            "title": "기획 전시관",
+            "subtitle": "2025년 봄 시즌 특별전",
+            "mediaUrl": "/videos/exhibit_intro.mp4",
+            "type": "video"
+          },
+          {
+            "id": "C07YZ80055B",
+            "title": "기획 포스터",
+            "subtitle": "초현실주의와 미래주의의 만남",
+            "mediaUrl": "/images/poster_main.jpg",
+            "type": "image"
+          }
+        ]
+      }
+    ],
+    "user": {
+      "email": "yesung@example.com",
+      "name": "김예성"
+    }
+  }
+}

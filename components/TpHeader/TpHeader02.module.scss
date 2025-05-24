@@ -1,0 +1,38 @@
+.tpHeader02 {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  right: 0;
+  left: 0;
+  &__nav {
+    background: #000;
+    padding: 20px;
+  }
+
+  &__navLists {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    list-style: none;
+    padding: 0;
+  }
+
+  .linkButton {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: 0.3s ease;
+    
+    &:hover {
+      opacity: 0.5;
+    }
+
+    &.active {
+      // text-decoration: underline;
+      font-weight: bold;
+      font-size: 20px;
+    }
+  }
+}
