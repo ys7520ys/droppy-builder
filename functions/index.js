@@ -2019,121 +2019,125 @@
 
 
 
-  const { onRequest } = require("firebase-functions/v2/https");
-  const { defineSecret } = require("firebase-functions/params");
-  const logger = require("firebase-functions/logger");
-  const { initializeApp, applicationDefault } = require("firebase-admin/app");
-  const { getFirestore } = require("firebase-admin/firestore");
-  const fs = require("fs");
-  const path = require("path");
-  const archiver = require("archiver");
-  const fetch = require("node-fetch");
-  const cors = require("cors")({ origin: true }); // 모든 출처 허용
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
+const { initializeApp, applicationDefault } = require("firebase-admin/app");
+const { getFirestore } = require("firebase-admin/firestore");
+const fs = require("fs");
+const path = require("path");
+const archiver = require("archiver");
+const fetch = require("node-fetch");
+const cors = require("cors")({ origin: true });
 
-  // 🔐 시크릿
-  const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+// 🔐 시크릿
+const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
-  // ✅ Firestore 초기화
-  initializeApp({ credential: applicationDefault() });
-  const db = getFirestore();
+// ✅ Firestore 초기화
+initializeApp({ credential: applicationDefault() });
+const db = getFirestore();
 
-  // ✅ 정적 폴더 경로
-  const EXPORT_DIR = path.join(__dirname, "../out");
+// ✅ 정적 폴더 경로
+const EXPORT_DIR = path.join(__dirname, "../out");
 
-  exports.autoDeploy = onRequest(
-    {
-      secrets: [NETLIFY_TOKEN],
-    },
-    (req, res) => {
-      cors(req, res, async () => {
-        try {
-          const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-          const { domain, orderId } = body;
+exports.autoDeploy = onRequest(
+  {
+    secrets: [NETLIFY_TOKEN],
+  },
+  (req, res) => {
+    cors(req, res, async () => {
+      try {
+        const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+        const { domain, orderId } = body;
 
-          if (!domain || !orderId) {
-            return res.status(400).json({ message: "❗ 도메인 또는 주문 ID 누락" });
-          }
+        logger.info("📨 전달받은 body:", body);
 
-          logger.info("📨 전달받은 domain 값:", domain);
-
-          // 🔍 주문 데이터 확인
-          const snap = await db.collection("orders").doc(orderId).get();
-          if (!snap.exists) {
-            return res.status(404).json({ message: "❌ 주문 데이터 없음" });
-          }
-
-          logger.info("📦 주문 데이터 로드 완료", snap.data());
-
-          // ✅ Zip 압축 생성
-          const zipPath = `/tmp/${orderId}.zip`;
-          const output = fs.createWriteStream(zipPath);
-          const archive = archiver("zip", { zlib: { level: 9 } });
-
-          archive.directory(EXPORT_DIR, false);
-          archive.pipe(output);
-          await archive.finalize();
-
-          logger.info("📦 정적 zip 압축 완료");
-
-          // ✅ Netlify에 zip 업로드 (새 사이트 생성)
-          const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-            },
-          });
-
-          const siteInfo = await siteCreateRes.json();
-          if (!siteCreateRes.ok) {
-            return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
-          }
-
-          const siteId = siteInfo.site_id;
-          logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
-
-          // ✅ zip 업로드
-          const zipBuffer = fs.readFileSync(zipPath);
-          const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-              "Content-Type": "application/zip",
-            },
-            body: zipBuffer,
-          });
-
-          const deployInfo = await deployRes.json();
-          if (!deployRes.ok) {
-            return res.status(500).json({ message: "❌ 배포 실패", detail: deployInfo });
-          }
-
-          logger.info("🚀 사이트 배포 완료:", deployInfo.deploy_id);
-
-          // ✅ 도메인 연결
-          const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ domain }),
-          });
-
-          const domainInfo = await domainRes.json();
-          if (!domainRes.ok) {
-            return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainInfo });
-          }
-
-          logger.info("🌐 도메인 연결 완료:", domain);
-
-          return res.status(200).json({
-            message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
-            url: `https://${domain}`,
-          });
-        } catch (err) {
-          logger.error("🔥 전체 오류 발생:", err);
-          return res.status(500).json({ message: "서버 오류", error: err.message });
+        if (!domain || !orderId) {
+          return res.status(400).json({ message: "❗ 도메인 또는 주문 ID 누락" });
         }
-      });
-    }
-  );
+
+        logger.info("📨 전달받은 domain 값:", domain);
+        logger.info("📨 전달받은 orderId 값:", orderId);
+
+        // 🔍 주문 데이터 확인
+        const snap = await db.collection("orders").doc(orderId).get();
+        if (!snap.exists) {
+          return res.status(404).json({ message: "❌ 주문 데이터 없음" });
+        }
+
+        logger.info("📦 주문 데이터 로드 완료", snap.data());
+
+        // ✅ Zip 압축 생성
+        const zipPath = `/tmp/${orderId}.zip`;
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver("zip", { zlib: { level: 9 } });
+
+        archive.directory(EXPORT_DIR, false);
+        archive.pipe(output);
+        await archive.finalize();
+
+        logger.info("📦 정적 zip 압축 완료");
+
+        // ✅ Netlify에 zip 업로드 (새 사이트 생성)
+        const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          },
+        });
+
+        const siteInfo = await siteCreateRes.json();
+        if (!siteCreateRes.ok) {
+          logger.error("❌ 사이트 생성 실패:", siteInfo);
+          return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
+        }
+
+        const siteId = siteInfo.site_id;
+        logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
+
+        // ✅ zip 업로드
+        const zipBuffer = fs.readFileSync(zipPath);
+        const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+            "Content-Type": "application/zip",
+          },
+          body: zipBuffer,
+        });
+
+        const deployText = await deployRes.text();
+        logger.info("🚀 배포 응답:", deployText);
+
+        if (!deployRes.ok) {
+          return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
+        }
+
+        // ✅ 도메인 연결
+        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ domain }),
+        });
+
+        const domainInfo = await domainRes.text();
+        logger.info("🌐 도메인 연결 응답:", domainInfo);
+
+        if (!domainRes.ok) {
+          return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainInfo });
+        }
+
+        return res.status(200).json({
+          message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
+          url: `https://${domain}`,
+        });
+      } catch (err) {
+        logger.error("🔥 전체 오류 발생:", err);
+        return res.status(500).json({ message: "서버 오류", error: err.message });
+      }
+    });
+  }
+);
