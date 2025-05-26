@@ -2029,7 +2029,7 @@ const cors = require("cors")({ origin: true }); // ⭐ 모든 출처 허용
 
 // 🔐 시크릿
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const TEMPLATE_SITE_ID = "YOUR_TEMPLATE_SITE_ID"; // 🔁 droppy-builder의 site_id로 교체
+const TEMPLATE_SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 🔁 droppy-builder의 site_id로 교체
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
