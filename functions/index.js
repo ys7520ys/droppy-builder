@@ -2084,6 +2084,7 @@ exports.autoDeploy = onRequest(
         }
 
         const siteId = siteInfo.site_id;
+        const siteName = siteInfo.name;
         logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
 
         const zipBuffer = fs.readFileSync(zipPath);
@@ -2103,28 +2104,13 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ✅ Netlify 도메인에 연결 (핵심 수정)
-        const domainRes = await fetch(`https://api.netlify.com/api/v1/domains/${domain}`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            site_id: siteId, // ✅ 이 사이트와 연결
-          }),
-        });
-
-        const domainInfo = await domainRes.text();
-        logger.info("🌐 도메인 연결 응답:", domainInfo);
-
-        if (!domainRes.ok) {
-          return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainInfo });
-        }
+        // ⛔️ 도메인 연결 API 제거됨 (와일드카드 DNS만 사용)
 
         return res.status(200).json({
-          message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
-          url: `https://${domain}`,
+          message: "🎉 Netlify 사이트 생성 + 배포 성공 (와일드카드로 접근 가능)",
+          siteName,
+          sitePreviewUrl: `https://${siteName}.netlify.app`,
+          customDomainUrl: `https://${domain}`,
         });
       } catch (err) {
         logger.error("🔥 전체 오류 발생:", err);
