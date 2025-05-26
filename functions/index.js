@@ -2113,14 +2113,14 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ✅ 도메인 연결
+        // ✅ 도메인 연결 - 핵심 수정!
         const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ domain }),
+          body: JSON.stringify({ hostname: domain }), // ✅ 필수 필드!
         });
 
         const domainInfo = await domainRes.text();
