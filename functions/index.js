@@ -2025,79 +2025,82 @@ const logger = require("firebase-functions/logger");
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const fetch = require("node-fetch");
+const cors = require("cors")({ origin: true }); // ⭐ 모든 출처 허용
 
+// 🔐 시크릿
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const TEMPLATE_SITE_ID = "YOUR_TEMPLATE_SITE_ID"; // 🔁 droppy-builder의 site_id로 바꿔줘
+const TEMPLATE_SITE_ID = "YOUR_TEMPLATE_SITE_ID"; // 🔁 droppy-builder의 site_id로 교체
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
+// ✅ CORS 명시적으로 적용
 exports.autoDeploy = onRequest(
   {
-    cors: true,
     secrets: [NETLIFY_TOKEN],
   },
-  async (req, res) => {
-    try {
-      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { domain, orderId } = body;
+  (req, res) => {
+    cors(req, res, async () => {
+      try {
+        const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+        const { domain, orderId } = body;
 
-      if (!domain || !orderId) {
-        logger.error("❗ 도메인 또는 주문 ID 누락", { domain, orderId });
-        return res.status(400).json({ message: "도메인 또는 주문 ID 누락" });
+        if (!domain || !orderId) {
+          logger.error("❗ 도메인 또는 주문 ID 누락", { domain, orderId });
+          return res.status(400).json({ message: "도메인 또는 주문 ID 누락" });
+        }
+
+        logger.info("📨 주문 도메인:", domain);
+
+        // 🔍 Firestore에서 주문 데이터 확인
+        const snap = await db.collection("orders").doc(orderId).get();
+        if (!snap.exists) {
+          logger.error("❌ 주문 데이터를 찾을 수 없음:", orderId);
+          return res.status(404).json({ message: "주문 데이터 없음" });
+        }
+
+        const orderData = snap.data();
+        logger.info("📦 주문 데이터:", orderData);
+
+        // 🚀 Netlify 사이트 복제 요청
+        const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            site_id: TEMPLATE_SITE_ID,
+            custom_domain: domain,
+          }),
+        });
+
+        const siteResult = await siteCreateRes.json();
+
+        if (!siteCreateRes.ok) {
+          logger.error("❌ 사이트 생성 실패:", siteResult);
+          return res.status(500).json({ message: "사이트 생성 실패", detail: siteResult });
+        }
+
+        logger.info("✅ Netlify 새 사이트 생성 완료:", {
+          name: siteResult.name,
+          domain: siteResult.ssl_url,
+        });
+
+        return res.status(200).json({
+          message: "🎉 사이트 복제 + 도메인 연결 성공!",
+          site: siteResult,
+        });
+      } catch (err) {
+        logger.error("🔥 서버 오류 발생:", {
+          error: err.message,
+          stack: err.stack,
+        });
+        return res.status(500).json({
+          message: "서버 오류 발생",
+          error: err.message,
+        });
       }
-
-      logger.info("📨 주문 도메인:", domain);
-
-      // ✅ Firestore 주문 데이터 확인
-      const snap = await db.collection("orders").doc(orderId).get();
-      if (!snap.exists) {
-        logger.error("❌ 주문 데이터를 찾을 수 없음:", orderId);
-        return res.status(404).json({ message: "주문 데이터 없음" });
-      }
-
-      const orderData = snap.data();
-      logger.info("📦 주문 데이터:", orderData);
-
-      // ✅ Netlify API: 사이트 복제
-      const siteCreateRes = await fetch(`https://api.netlify.com/api/v1/sites`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          site_id: TEMPLATE_SITE_ID,
-          custom_domain: domain, // 예: ami.droppy.kr
-        }),
-      });
-
-      const siteResult = await siteCreateRes.json();
-
-      if (!siteCreateRes.ok) {
-        logger.error("❌ 사이트 생성 실패:", siteResult);
-        return res.status(500).json({ message: "사이트 생성 실패", detail: siteResult });
-      }
-
-      logger.info("✅ Netlify 새 사이트 생성 완료:", {
-        name: siteResult.name,
-        domain: siteResult.ssl_url,
-      });
-
-      return res.status(200).json({
-        message: "🎉 사이트 복제 + 도메인 연결 성공!",
-        site: siteResult,
-      });
-
-    } catch (err) {
-      logger.error("🔥 서버 오류 발생:", {
-        error: err.message,
-        stack: err.stack,
-      });
-      return res.status(500).json({
-        message: "서버 오류 발생",
-        error: err.message,
-      });
-    }
+    });
   }
 );
