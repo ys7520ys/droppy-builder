@@ -2019,89 +2019,121 @@
 
 
 
-const { onRequest } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
-const logger = require("firebase-functions/logger");
-const { initializeApp, applicationDefault } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
-const fetch = require("node-fetch");
-const cors = require("cors")({ origin: true });
+  const { onRequest } = require("firebase-functions/v2/https");
+  const { defineSecret } = require("firebase-functions/params");
+  const logger = require("firebase-functions/logger");
+  const { initializeApp, applicationDefault } = require("firebase-admin/app");
+  const { getFirestore } = require("firebase-admin/firestore");
+  const fs = require("fs");
+  const path = require("path");
+  const archiver = require("archiver");
+  const fetch = require("node-fetch");
+  const cors = require("cors")({ origin: true }); // 모든 출처 허용
 
-// 🔐 시크릿
-const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c"; // droppy.kr의 zone ID
-const TARGET_HOST = "droppy-main.netlify.app"; // 빌드된 템플릿 사이트
+  // 🔐 시크릿
+  const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
-initializeApp({ credential: applicationDefault() });
-const db = getFirestore();
+  // ✅ Firestore 초기화
+  initializeApp({ credential: applicationDefault() });
+  const db = getFirestore();
 
-exports.autoDeploy = onRequest(
-  {
-    secrets: [NETLIFY_TOKEN],
-  },
-  (req, res) => {
-    cors(req, res, async () => {
-      try {
-        const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-        const { domain, orderId } = body;
+  // ✅ 정적 폴더 경로
+  const EXPORT_DIR = path.join(__dirname, "../out");
 
-        if (!domain || !orderId) {
-          logger.error("❗ 도메인 또는 주문 ID 누락", { domain, orderId });
-          return res.status(400).json({ message: "도메인 또는 주문 ID 누락" });
+  exports.autoDeploy = onRequest(
+    {
+      secrets: [NETLIFY_TOKEN],
+    },
+    (req, res) => {
+      cors(req, res, async () => {
+        try {
+          const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+          const { domain, orderId } = body;
+
+          if (!domain || !orderId) {
+            return res.status(400).json({ message: "❗ 도메인 또는 주문 ID 누락" });
+          }
+
+          logger.info("📨 전달받은 domain 값:", domain);
+
+          // 🔍 주문 데이터 확인
+          const snap = await db.collection("orders").doc(orderId).get();
+          if (!snap.exists) {
+            return res.status(404).json({ message: "❌ 주문 데이터 없음" });
+          }
+
+          logger.info("📦 주문 데이터 로드 완료", snap.data());
+
+          // ✅ Zip 압축 생성
+          const zipPath = `/tmp/${orderId}.zip`;
+          const output = fs.createWriteStream(zipPath);
+          const archive = archiver("zip", { zlib: { level: 9 } });
+
+          archive.directory(EXPORT_DIR, false);
+          archive.pipe(output);
+          await archive.finalize();
+
+          logger.info("📦 정적 zip 압축 완료");
+
+          // ✅ Netlify에 zip 업로드 (새 사이트 생성)
+          const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+            },
+          });
+
+          const siteInfo = await siteCreateRes.json();
+          if (!siteCreateRes.ok) {
+            return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
+          }
+
+          const siteId = siteInfo.site_id;
+          logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
+
+          // ✅ zip 업로드
+          const zipBuffer = fs.readFileSync(zipPath);
+          const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+              "Content-Type": "application/zip",
+            },
+            body: zipBuffer,
+          });
+
+          const deployInfo = await deployRes.json();
+          if (!deployRes.ok) {
+            return res.status(500).json({ message: "❌ 배포 실패", detail: deployInfo });
+          }
+
+          logger.info("🚀 사이트 배포 완료:", deployInfo.deploy_id);
+
+          // ✅ 도메인 연결
+          const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ domain }),
+          });
+
+          const domainInfo = await domainRes.json();
+          if (!domainRes.ok) {
+            return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainInfo });
+          }
+
+          logger.info("🌐 도메인 연결 완료:", domain);
+
+          return res.status(200).json({
+            message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
+            url: `https://${domain}`,
+          });
+        } catch (err) {
+          logger.error("🔥 전체 오류 발생:", err);
+          return res.status(500).json({ message: "서버 오류", error: err.message });
         }
-
-        logger.info("📨 전달받은 domain 값:", domain);
-
-        // 🔍 Firestore에서 주문 데이터 확인
-        const snap = await db.collection("orders").doc(orderId).get();
-        if (!snap.exists) {
-          logger.error("❌ 주문 데이터를 찾을 수 없음:", orderId);
-          return res.status(404).json({ message: "주문 데이터 없음" });
-        }
-
-        const subdomain = domain.split(".")[0];
-
-        // 🌐 DNS 등록 요청
-        const payload = {
-          type: "CNAME",
-          name: subdomain,
-          value: TARGET_HOST,
-          ttl: 3600,
-        };
-
-        const dnsRes = await fetch(`https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const dnsResult = await dnsRes.json();
-
-        if (!dnsRes.ok) {
-          logger.error("❌ Netlify DNS 등록 실패:", dnsResult);
-          return res.status(500).json({ message: "DNS 등록 실패", detail: dnsResult });
-        }
-
-        logger.info("✅ DNS 등록 성공:", dnsResult);
-
-        return res.status(200).json({
-          message: `🎉 도메인 ${domain} 연결 완료`,
-          result: dnsResult,
-        });
-
-      } catch (err) {
-        logger.error("🔥 서버 오류 발생:", {
-          error: err.message,
-          stack: err.stack,
-        });
-        return res.status(500).json({
-          message: "서버 오류 발생",
-          error: err.message,
-        });
-      }
-    });
-  }
-);
+      });
+    }
+  );
