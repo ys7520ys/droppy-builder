@@ -2017,8 +2017,6 @@
 
 
 
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2030,14 +2028,11 @@ const archiver = require("archiver");
 const fetch = require("node-fetch");
 const cors = require("cors")({ origin: true });
 
-// 🔐 시크릿
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
-// ✅ Firestore 초기화
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ 정적 폴더 경로
 const EXPORT_DIR = path.join(__dirname, "../out");
 
 exports.autoDeploy = onRequest(
@@ -2051,15 +2046,13 @@ exports.autoDeploy = onRequest(
         const { domain, orderId } = body;
 
         logger.info("📨 전달받은 body:", body);
-
         if (!domain || !orderId) {
           return res.status(400).json({ message: "❗ 도메인 또는 주문 ID 누락" });
         }
 
-        logger.info("📨 전달받은 domain 값:", domain);
-        logger.info("📨 전달받은 orderId 값:", orderId);
+        logger.info("📨 domain:", domain);
+        logger.info("📨 orderId:", orderId);
 
-        // 🔍 주문 데이터 확인
         const snap = await db.collection("orders").doc(orderId).get();
         if (!snap.exists) {
           return res.status(404).json({ message: "❌ 주문 데이터 없음" });
@@ -2067,7 +2060,6 @@ exports.autoDeploy = onRequest(
 
         logger.info("📦 주문 데이터 로드 완료", snap.data());
 
-        // ✅ Zip 압축 생성
         const zipPath = `/tmp/${orderId}.zip`;
         const output = fs.createWriteStream(zipPath);
         const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2078,7 +2070,6 @@ exports.autoDeploy = onRequest(
 
         logger.info("📦 정적 zip 압축 완료");
 
-        // ✅ Netlify에 zip 업로드 (새 사이트 생성)
         const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
           method: "POST",
           headers: {
@@ -2095,7 +2086,6 @@ exports.autoDeploy = onRequest(
         const siteId = siteInfo.site_id;
         logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
 
-        // ✅ zip 업로드
         const zipBuffer = fs.readFileSync(zipPath);
         const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
           method: "POST",
@@ -2113,14 +2103,16 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ✅ 도메인 연결 - 핵심 수정!
-        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+        // ✅ Netlify 도메인에 연결 (핵심 수정)
+        const domainRes = await fetch(`https://api.netlify.com/api/v1/domains/${domain}`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ hostname: domain }), // ✅ 필수 필드!
+          body: JSON.stringify({
+            site_id: siteId, // ✅ 이 사이트와 연결
+          }),
         });
 
         const domainInfo = await domainRes.text();
