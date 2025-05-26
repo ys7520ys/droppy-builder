@@ -2025,16 +2025,16 @@ const logger = require("firebase-functions/logger");
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const fetch = require("node-fetch");
-const cors = require("cors")({ origin: true }); // ⭐ 모든 출처 허용
+const cors = require("cors")({ origin: true });
 
 // 🔐 시크릿
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const TEMPLATE_SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 🔁 droppy-builder의 site_id로 교체
+const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c"; // droppy.kr의 zone ID
+const TARGET_HOST = "droppy-main.netlify.app"; // 빌드된 템플릿 사이트
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ CORS 명시적으로 적용
 exports.autoDeploy = onRequest(
   {
     secrets: [NETLIFY_TOKEN],
@@ -2050,7 +2050,7 @@ exports.autoDeploy = onRequest(
           return res.status(400).json({ message: "도메인 또는 주문 ID 누락" });
         }
 
-        logger.info("📨 주문 도메인:", domain);
+        logger.info("📨 전달받은 domain 값:", domain);
 
         // 🔍 Firestore에서 주문 데이터 확인
         const snap = await db.collection("orders").doc(orderId).get();
@@ -2059,38 +2059,39 @@ exports.autoDeploy = onRequest(
           return res.status(404).json({ message: "주문 데이터 없음" });
         }
 
-        const orderData = snap.data();
-        logger.info("📦 주문 데이터:", orderData);
+        const subdomain = domain.split(".")[0];
 
-        // 🚀 Netlify 사이트 복제 요청
-        const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+        // 🌐 DNS 등록 요청
+        const payload = {
+          type: "CNAME",
+          name: subdomain,
+          value: TARGET_HOST,
+          ttl: 3600,
+        };
+
+        const dnsRes = await fetch(`https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            site_id: TEMPLATE_SITE_ID,
-            custom_domain: domain,
-          }),
+          body: JSON.stringify(payload),
         });
 
-        const siteResult = await siteCreateRes.json();
+        const dnsResult = await dnsRes.json();
 
-        if (!siteCreateRes.ok) {
-          logger.error("❌ 사이트 생성 실패:", siteResult);
-          return res.status(500).json({ message: "사이트 생성 실패", detail: siteResult });
+        if (!dnsRes.ok) {
+          logger.error("❌ Netlify DNS 등록 실패:", dnsResult);
+          return res.status(500).json({ message: "DNS 등록 실패", detail: dnsResult });
         }
 
-        logger.info("✅ Netlify 새 사이트 생성 완료:", {
-          name: siteResult.name,
-          domain: siteResult.ssl_url,
-        });
+        logger.info("✅ DNS 등록 성공:", dnsResult);
 
         return res.status(200).json({
-          message: "🎉 사이트 복제 + 도메인 연결 성공!",
-          site: siteResult,
+          message: `🎉 도메인 ${domain} 연결 완료`,
+          result: dnsResult,
         });
+
       } catch (err) {
         logger.error("🔥 서버 오류 발생:", {
           error: err.message,
