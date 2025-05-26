@@ -107,12 +107,13 @@ import { getFirestore } from "firebase-admin/firestore";
 const app = initializeApp({ credential: applicationDefault() });
 const db = getFirestore(app);
 
-// ✅ SSR: 요청마다 Firestore에서 데이터 가져오기
 export async function getServerSideProps({ req }) {
   const host = req.headers.host || "";
-  const subdomain = host.split(".droppy.kr")[0]; // 예: ami.droppy.kr → ami
+  const cleanHost = host.replace(/:\d+$/, ""); // 포트 제거
+  const subdomainMatch = cleanHost.match(/^([a-z0-9-]+)\.droppy\.kr$/);
+  const subdomain = subdomainMatch?.[1] || null;
 
-  if (!subdomain || host === "droppy.kr") {
+  if (!subdomain) {
     return { notFound: true };
   }
 
@@ -149,4 +150,3 @@ export default function CustomerPage({ data }) {
     </main>
   );
 }
-

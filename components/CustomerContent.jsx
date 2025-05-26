@@ -116,8 +116,6 @@
 
 
 
-
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -131,6 +129,11 @@ const componentMap = {
   배너04: TpBanner04,
 };
 
+// ✅ 등록된 헤더 타입 매핑 (확장 가능)
+const headerMap = {
+  헤더02: TpHeader02,
+};
+
 export default function CustomerContent({ pageData }) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
@@ -142,15 +145,17 @@ export default function CustomerContent({ pageData }) {
   const isValidComponents =
     Array.isArray(currentPage.components) && currentPage.components.length > 0;
 
+  const HeaderComponent = headerMap[pageData.headerType];
+
   return (
     <main style={{ background: "#000", color: "#fff", margin: 0, padding: 0 }}>
-      {/* ✅ 항상 고정된 헤더 (motion 바깥) */}
-      {pageData.headerType === "헤더02" && (
-        <TpHeader02
+      {/* ✅ 고정된 헤더 */}
+      {HeaderComponent && (
+        <HeaderComponent
           isPreview
           setCurrentPageIndex={setCurrentPageIndex}
           currentPageIndex={currentPageIndex}
-          menuItems={pageData.menu || []} // ✅ 이렇게 바꿔야 함
+          menuItems={pageData.menuItems || []} // ✅ 이 부분 수정됨
         />
       )}
 
