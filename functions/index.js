@@ -2013,7 +2013,8 @@
 //       });
 //     }
 //   }
-// );const { onRequest } = require("firebase-functions/v2/https");const { onRequest } = require("firebase-functions/v2/https");
+// );const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
