@@ -2013,7 +2013,7 @@
 //       });
 //     }
 //   }
-// );
+// );const { onRequest } = require("firebase-functions/v2/https");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2040,21 +2040,32 @@ exports.autoDeploy = onRequest(
     cors(req, res, async () => {
       try {
         const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-        const { domain, orderId } = body;
+        const { domain } = body;
 
         logger.info("📨 전달받은 body:", body);
-        if (!domain || !orderId) {
-          return res.status(400).json({ message: "❗ 도메인 또는 주문 ID 누락" });
+        if (!domain) {
+          return res.status(400).json({ message: "❗ 도메인 누락" });
         }
 
         const subdomain = domain.split(".")[0];
 
-        const snap = await db.collection("orders").doc(orderId).get();
-        if (!snap.exists) {
-          return res.status(404).json({ message: "❌ 주문 데이터 없음" });
-        }
-        logger.info("📦 주문 데이터 로드 완료", snap.data());
+        // 도메인으로 Firestore에서 데이터 조회
+        const snapshot = await db.collection("orders")
+          .where("domain", "==", domain)
+          .limit(1)
+          .get();
 
+        if (snapshot.empty) {
+          return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
+        }
+
+        const doc = snapshot.docs[0];
+        const orderId = doc.id;
+        const orderData = doc.data();
+
+        logger.info("📦 주문 데이터 로드 완료:", orderData);
+
+        // 정적 파일 압축
         const zipPath = `/tmp/${orderId}.zip`;
         const output = fs.createWriteStream(zipPath);
         const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2099,7 +2110,7 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // DNS CNAME 레코드 등록
+        // DNS CNAME 등록
         const dnsRes = await fetch(
           `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
           {
@@ -2117,8 +2128,8 @@ exports.autoDeploy = onRequest(
           }
         );
 
-        let dnsJson;
         const dnsText = await dnsRes.text();
+        let dnsJson;
         try {
           dnsJson = JSON.parse(dnsText);
         } catch {
@@ -2127,13 +2138,10 @@ exports.autoDeploy = onRequest(
 
         logger.info("🌐 Netlify DNS CNAME 등록 응답:", dnsJson);
         if (!dnsRes.ok) {
-          return res.status(500).json({
-            message: "❌ Netlify DNS 등록 실패",
-            detail: dnsJson,
-          });
+          return res.status(500).json({ message: "❌ Netlify DNS 등록 실패", detail: dnsJson });
         }
 
-        // 커스텀 도메인 설정 (PATCH 방식)
+        // 커스텀 도메인 설정
         const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
           method: "PATCH",
           headers: {
@@ -2141,12 +2149,12 @@ exports.autoDeploy = onRequest(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            custom_domain: domain, // 예: abc.droppy.kr
+            custom_domain: domain,
           }),
         });
 
-        let domainJson;
         const domainText = await domainRes.text();
+        let domainJson;
         try {
           domainJson = JSON.parse(domainText);
         } catch {
@@ -2155,10 +2163,7 @@ exports.autoDeploy = onRequest(
 
         logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
         if (!domainRes.ok) {
-          return res.status(500).json({
-            message: "❌ 커스텀 도메인 등록 실패",
-            detail: domainJson,
-          });
+          return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
         }
 
         return res.status(200).json({
