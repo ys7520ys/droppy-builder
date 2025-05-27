@@ -2025,7 +2025,7 @@ const archiver = require("archiver");
 const fetch = require("node-fetch");
 
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c";
+const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c"; // ✅ droppy.kr DNS Zone ID
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
@@ -2042,14 +2042,18 @@ exports.autoDeploy = onRequest(
 
       logger.info("📨 전달받은 body:", body);
 
-      // 도메인 유효성 검사
+      // ✅ 도메인 유효성 검사
       if (!domain || typeof domain !== "string" || !domain.includes(".")) {
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
       const subdomain = domain.split(".")[0];
+      if (!subdomain || subdomain.trim() === "") {
+        logger.error("❗ 서브도메인 파싱 실패:", domain);
+        return res.status(400).json({ message: "❗ 유효하지 않은 도메인입니다 (서브도메인 없음)" });
+      }
 
-      // Firestore에서 도메인으로 주문 정보 조회
+      // ✅ Firestore에서 주문 정보 조회
       const snapshot = await db.collection("orders")
         .where("domain", "==", domain)
         .limit(1)
@@ -2064,7 +2068,7 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // 정적 파일 압축
+      // ✅ 정적 파일 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2074,7 +2078,7 @@ exports.autoDeploy = onRequest(
       await archive.finalize();
       logger.info("📦 정적 zip 압축 완료");
 
-      // Netlify 사이트 생성
+      // ✅ Netlify 사이트 생성
       const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
         method: "POST",
         headers: {
@@ -2092,7 +2096,7 @@ exports.autoDeploy = onRequest(
       const siteName = siteInfo.name;
       logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
 
-      // 정적 파일 배포
+      // ✅ 정적 파일 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
         method: "POST",
@@ -2109,7 +2113,12 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
       }
 
-      // DNS CNAME 등록
+      // ✅ Netlify DNS CNAME 등록
+      logger.info("🌐 Netlify DNS 등록 요청:", {
+        name: subdomain,
+        value: `${siteName}.netlify.app`
+      });
+
       const dnsRes = await fetch(
         `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
         {
@@ -2140,7 +2149,7 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ Netlify DNS 등록 실패", detail: dnsJson });
       }
 
-      // 커스텀 도메인 설정
+      // ✅ 커스텀 도메인 연결
       const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
         method: "PATCH",
         headers: {
@@ -2165,6 +2174,7 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
       }
 
+      // ✅ 완료 응답
       return res.status(200).json({
         message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
         siteName,
