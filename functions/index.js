@@ -2013,8 +2013,7 @@
 //       });
 //     }
 //   }
-// );const { onRequest } = require("firebase-functions/v2/https");
-const { onRequest } = require("firebase-functions/v2/https");
+// );const { onRequest } = require("firebase-functions/v2/https");const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
@@ -2023,10 +2022,9 @@ const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
 const fetch = require("node-fetch");
-const cors = require("cors")({ origin: true });
 
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c"; // droppy.kr DNS Zone ID
+const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c";
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
@@ -2036,146 +2034,145 @@ exports.autoDeploy = onRequest(
   {
     secrets: [NETLIFY_TOKEN],
   },
-  (req, res) => {
-    cors(req, res, async () => {
-      try {
-        const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-        const { domain } = body;
+  async (req, res) => {
+    try {
+      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { domain } = body;
 
-        logger.info("📨 전달받은 body:", body);
-        if (!domain) {
-          return res.status(400).json({ message: "❗ 도메인 누락" });
-        }
+      logger.info("📨 전달받은 body:", body);
 
-        const subdomain = domain.split(".")[0];
+      // 도메인 유효성 검사
+      if (!domain || typeof domain !== "string" || !domain.includes(".")) {
+        return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
+      }
 
-        // 도메인으로 Firestore에서 데이터 조회
-        const snapshot = await db.collection("orders")
-          .where("domain", "==", domain)
-          .limit(1)
-          .get();
+      const subdomain = domain.split(".")[0];
 
-        if (snapshot.empty) {
-          return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
-        }
+      // Firestore에서 도메인으로 주문 정보 조회
+      const snapshot = await db.collection("orders")
+        .where("domain", "==", domain)
+        .limit(1)
+        .get();
 
-        const doc = snapshot.docs[0];
-        const orderId = doc.id;
-        const orderData = doc.data();
+      if (snapshot.empty) {
+        return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
+      }
 
-        logger.info("📦 주문 데이터 로드 완료:", orderData);
+      const doc = snapshot.docs[0];
+      const orderId = doc.id;
+      const orderData = doc.data();
+      logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-        // 정적 파일 압축
-        const zipPath = `/tmp/${orderId}.zip`;
-        const output = fs.createWriteStream(zipPath);
-        const archive = archiver("zip", { zlib: { level: 9 } });
+      // 정적 파일 압축
+      const zipPath = `/tmp/${orderId}.zip`;
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver("zip", { zlib: { level: 9 } });
 
-        archive.directory(EXPORT_DIR, false);
-        archive.pipe(output);
-        await archive.finalize();
-        logger.info("📦 정적 zip 압축 완료");
+      archive.directory(EXPORT_DIR, false);
+      archive.pipe(output);
+      await archive.finalize();
+      logger.info("📦 정적 zip 압축 완료");
 
-        // Netlify 사이트 생성
-        const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+      // Netlify 사이트 생성
+      const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+        },
+      });
+
+      const siteInfo = await siteCreateRes.json();
+      if (!siteCreateRes.ok) {
+        logger.error("❌ 사이트 생성 실패:", siteInfo);
+        return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
+      }
+
+      const siteId = siteInfo.site_id;
+      const siteName = siteInfo.name;
+      logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
+
+      // 정적 파일 배포
+      const zipBuffer = fs.readFileSync(zipPath);
+      const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          "Content-Type": "application/zip",
+        },
+        body: zipBuffer,
+      });
+
+      const deployText = await deployRes.text();
+      logger.info("🚀 배포 응답:", deployText);
+      if (!deployRes.ok) {
+        return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
+      }
+
+      // DNS CNAME 등록
+      const dnsRes = await fetch(
+        `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
+        {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          },
-        });
-
-        const siteInfo = await siteCreateRes.json();
-        if (!siteCreateRes.ok) {
-          logger.error("❌ 사이트 생성 실패:", siteInfo);
-          return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
-        }
-
-        const siteId = siteInfo.site_id;
-        const siteName = siteInfo.name;
-        logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
-
-        // 정적 파일 배포
-        const zipBuffer = fs.readFileSync(zipPath);
-        const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-            "Content-Type": "application/zip",
-          },
-          body: zipBuffer,
-        });
-
-        const deployText = await deployRes.text();
-        logger.info("🚀 배포 응답:", deployText);
-        if (!deployRes.ok) {
-          return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
-        }
-
-        // DNS CNAME 등록
-        const dnsRes = await fetch(
-          `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              type: "CNAME",
-              name: subdomain,
-              value: `${siteName}.netlify.app`,
-              ttl: 3600,
-            }),
-          }
-        );
-
-        const dnsText = await dnsRes.text();
-        let dnsJson;
-        try {
-          dnsJson = JSON.parse(dnsText);
-        } catch {
-          dnsJson = { raw: dnsText };
-        }
-
-        logger.info("🌐 Netlify DNS CNAME 등록 응답:", dnsJson);
-        if (!dnsRes.ok) {
-          return res.status(500).json({ message: "❌ Netlify DNS 등록 실패", detail: dnsJson });
-        }
-
-        // 커스텀 도메인 설정
-        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
-          method: "PATCH",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            custom_domain: domain,
+            type: "CNAME",
+            name: subdomain,
+            value: `${siteName}.netlify.app`,
+            ttl: 3600,
           }),
-        });
-
-        const domainText = await domainRes.text();
-        let domainJson;
-        try {
-          domainJson = JSON.parse(domainText);
-        } catch {
-          domainJson = { raw: domainText };
         }
+      );
 
-        logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
-        if (!domainRes.ok) {
-          return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
-        }
-
-        return res.status(200).json({
-          message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
-          siteName,
-          sitePreviewUrl: `https://${siteName}.netlify.app`,
-          customDomainUrl: `https://${domain}`,
-        });
-      } catch (err) {
-        logger.error("🔥 전체 오류 발생:", err);
-        return res.status(500).json({ message: "서버 오류", error: err.message });
+      const dnsText = await dnsRes.text();
+      let dnsJson;
+      try {
+        dnsJson = JSON.parse(dnsText);
+      } catch {
+        dnsJson = { raw: dnsText };
       }
-    });
+
+      logger.info("🌐 Netlify DNS CNAME 등록 응답:", dnsJson);
+      if (!dnsRes.ok) {
+        return res.status(500).json({ message: "❌ Netlify DNS 등록 실패", detail: dnsJson });
+      }
+
+      // 커스텀 도메인 설정
+      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          custom_domain: domain,
+        }),
+      });
+
+      const domainText = await domainRes.text();
+      let domainJson;
+      try {
+        domainJson = JSON.parse(domainText);
+      } catch {
+        domainJson = { raw: domainText };
+      }
+
+      logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
+      if (!domainRes.ok) {
+        return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
+      }
+
+      return res.status(200).json({
+        message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
+        siteName,
+        sitePreviewUrl: `https://${siteName}.netlify.app`,
+        customDomainUrl: `https://${domain}`,
+      });
+    } catch (err) {
+      logger.error("🔥 전체 오류 발생:", err);
+      return res.status(500).json({ message: "서버 오류", error: err.message });
+    }
   }
 );
