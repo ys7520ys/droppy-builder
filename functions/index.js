@@ -2133,24 +2133,16 @@ exports.autoDeploy = onRequest(
           });
         }
 
-        // 현재 도메인 상태 확인
-        const domainsRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          },
-        });
-
-        logger.info("�� 현재 도메인 상태:", await domainsRes.text());
-
-        // 커스텀 도메인 설정
-        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-          method: "POST",
+        // 커스텀 도메인 설정 (PATCH 방식)
+        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
+          method: "PATCH",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ domain: domain }),
+          body: JSON.stringify({
+            custom_domain: domain, // 예: abc.droppy.kr
+          }),
         });
 
         let domainJson;
