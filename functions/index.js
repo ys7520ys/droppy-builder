@@ -2014,7 +2014,6 @@
 //     }
 //   }
 // );
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2065,6 +2064,7 @@ exports.autoDeploy = onRequest(
         await archive.finalize();
         logger.info("📦 정적 zip 압축 완료");
 
+        // Netlify 사이트 생성
         const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
           method: "POST",
           headers: {
@@ -2082,6 +2082,7 @@ exports.autoDeploy = onRequest(
         const siteName = siteInfo.name;
         logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
 
+        // 정적 파일 배포
         const zipBuffer = fs.readFileSync(zipPath);
         const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
           method: "POST",
@@ -2098,7 +2099,7 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ✅ Netlify DNS CNAME 등록
+        // DNS CNAME 레코드 등록
         const dnsRes = await fetch(
           `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
           {
@@ -2132,29 +2133,39 @@ exports.autoDeploy = onRequest(
           });
         }
 
-        // ✅ custom_domain 설정 (PATCH)
-        const patchRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
-          method: "PATCH",
+        // 현재 도메인 상태 확인
+        const domainsRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          },
+        });
+
+        logger.info("�� 현재 도메인 상태:", await domainsRes.text());
+
+        // 커스텀 도메인 설정
+        const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ custom_domain: domain }),
+          body: JSON.stringify({ domain: domain }),
         });
 
-        let patchJson;
-        const patchRaw = await patchRes.text();
+        let domainJson;
+        const domainText = await domainRes.text();
         try {
-          patchJson = JSON.parse(patchRaw);
+          domainJson = JSON.parse(domainText);
         } catch {
-          patchJson = { raw: patchRaw };
+          domainJson = { raw: domainText };
         }
 
-        logger.info("🔗 custom_domain 설정(PATCH) 응답:", patchJson);
-        if (!patchRes.ok) {
+        logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
+        if (!domainRes.ok) {
           return res.status(500).json({
-            message: "❌ custom_domain 등록 실패",
-            detail: patchJson,
+            message: "❌ 커스텀 도메인 등록 실패",
+            detail: domainJson,
           });
         }
 
