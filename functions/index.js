@@ -2015,7 +2015,6 @@
 //   }
 // );
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2041,6 +2040,7 @@ exports.autoDeploy = onRequest(
   (req, res) => {
     cors(req, res, async () => {
       try {
+        // ✅ 입력값 확인
         const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
         const { domain, orderId } = body;
 
@@ -2052,6 +2052,7 @@ exports.autoDeploy = onRequest(
         logger.info("📨 domain:", domain);
         logger.info("📨 orderId:", orderId);
 
+        // ✅ Firestore에서 주문 데이터 불러오기
         const snap = await db.collection("orders").doc(orderId).get();
         if (!snap.exists) {
           return res.status(404).json({ message: "❌ 주문 데이터 없음" });
@@ -2059,7 +2060,7 @@ exports.autoDeploy = onRequest(
 
         logger.info("📦 주문 데이터 로드 완료", snap.data());
 
-        // ✅ 압축(zip) 생성
+        // ✅ /tmp 폴더에 zip 압축하기
         const zipPath = `/tmp/${orderId}.zip`;
         const output = fs.createWriteStream(zipPath);
         const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2106,7 +2107,7 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ✅ PATCH 방식으로 custom_domain 설정
+        // ✅ PATCH 방식으로 도메인 연결 (예: abc.droppy.kr)
         const patchRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
           method: "PATCH",
           headers: {
@@ -2116,13 +2117,25 @@ exports.autoDeploy = onRequest(
           body: JSON.stringify({ custom_domain: domain }),
         });
 
-        const patchJson = await patchRes.json();
+        // ❗ 응답이 JSON이 아닐 경우도 대비해서 예외 처리
+        let patchJson;
+        const patchRaw = await patchRes.text();
+        try {
+          patchJson = JSON.parse(patchRaw);
+        } catch (err) {
+          patchJson = { raw: patchRaw };
+        }
+
         logger.info("🌐 도메인 연결(PATCH) 응답:", patchJson);
 
         if (!patchRes.ok) {
-          return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: patchJson });
+          return res.status(500).json({
+            message: "❌ 도메인 연결 실패",
+            detail: patchJson,
+          });
         }
 
+        // ✅ 성공 응답
         return res.status(200).json({
           message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
           siteName,
