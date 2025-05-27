@@ -2016,7 +2016,6 @@
 // );
 
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2060,6 +2059,7 @@ exports.autoDeploy = onRequest(
 
         logger.info("📦 주문 데이터 로드 완료", snap.data());
 
+        // ✅ 압축(zip) 생성
         const zipPath = `/tmp/${orderId}.zip`;
         const output = fs.createWriteStream(zipPath);
         const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2070,6 +2070,7 @@ exports.autoDeploy = onRequest(
 
         logger.info("📦 정적 zip 압축 완료");
 
+        // ✅ Netlify 새 사이트 생성
         const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
           method: "POST",
           headers: {
@@ -2087,6 +2088,7 @@ exports.autoDeploy = onRequest(
         const siteName = siteInfo.name;
         logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
 
+        // ✅ zip 파일 배포
         const zipBuffer = fs.readFileSync(zipPath);
         const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
           method: "POST",
@@ -2104,14 +2106,30 @@ exports.autoDeploy = onRequest(
           return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
         }
 
-        // ⛔️ 도메인 연결 API 제거됨 (와일드카드 DNS만 사용)
+        // ✅ PATCH 방식으로 custom_domain 설정
+        const patchRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ custom_domain: domain }),
+        });
+
+        const patchJson = await patchRes.json();
+        logger.info("🌐 도메인 연결(PATCH) 응답:", patchJson);
+
+        if (!patchRes.ok) {
+          return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: patchJson });
+        }
 
         return res.status(200).json({
-          message: "🎉 Netlify 사이트 생성 + 배포 성공 (와일드카드로 접근 가능)",
+          message: "🎉 Netlify 사이트 생성 + 배포 + 도메인 연결 성공",
           siteName,
           sitePreviewUrl: `https://${siteName}.netlify.app`,
           customDomainUrl: `https://${domain}`,
         });
+
       } catch (err) {
         logger.error("🔥 전체 오류 발생:", err);
         return res.status(500).json({ message: "서버 오류", error: err.message });
