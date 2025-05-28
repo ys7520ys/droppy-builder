@@ -2,11 +2,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
-import { db } from "@/lib/firebase";
+import { db } from "../../lib/firebase"; // ← 수정된 경로
 import { collection, query, where, getDocs } from "firebase/firestore";
 
 // 비동기로 컴포넌트 로딩 (SSR 비활성화)
-const CustomerContent = dynamic(() => import("@/components/CustomerContent"), {
+const CustomerContent = dynamic(() => import("../../components/CustomerContent"), {
   ssr: false,
   loading: () => (
     <div style={{ padding: "100px", textAlign: "center", color: "#fff" }}>
