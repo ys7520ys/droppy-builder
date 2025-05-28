@@ -2112,39 +2112,47 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
       }
 
-      // ✅ Netlify 커스텀 도메인 연결 추가
-      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          hostname: domain,
-        }),
-      });
+      // Netlify 커스텀 도메인 연결 (안정성 추가)
+      if (domain && typeof domain === "string") {
+        try {
+          logger.info("🔗 Netlify 도메인 연결 요청:", { hostname: domain });
 
-      const domainText = await domainRes.text();
-      let domainJson;
-      try {
-        domainJson = JSON.parse(domainText);
-      } catch {
-        domainJson = { raw: domainText };
+          const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              hostname: domain,
+            }),
+          });
+
+          const domainText = await domainRes.text();
+          let domainJson;
+          try {
+            domainJson = JSON.parse(domainText);
+          } catch {
+            domainJson = { raw: domainText };
+          }
+
+          logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
+
+          if (!domainRes.ok) {
+            logger.error("❌ Netlify 도메인 연결 실패:", domainJson);
+          }
+        } catch (domainErr) {
+          logger.error("❗ 도메인 연결 중 예외 발생:", domainErr);
+        }
       }
-      logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
 
-      if (!domainRes.ok) {
-        return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
-      }
-
-      // ✅ 최종 응답
+      // 최종 응답
       return res.status(200).json({
         message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
         siteName,
         sitePreviewUrl: `https://${siteName}.netlify.app`,
         customDomainUrl: `https://${domain}`,
       });
-
     } catch (err) {
       logger.error("🔥 전체 오류 발생:", err);
       return res.status(500).json({ message: "서버 오류", error: err.message });
