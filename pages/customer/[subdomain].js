@@ -50,12 +50,60 @@
 
 
 
+//아직 미정정
+// // /pages/customer/[subdomain].js
+// import { useRouter } from "next/router";
+// import { useEffect, useState } from "react";
+// import { db } from "@/lib/firebase";
+// import { collection, query, where, getDocs } from "firebase/firestore";
 
-// /pages/customer/[subdomain].js
+// export default function CustomerPage() {
+//   const router = useRouter();
+//   const { subdomain } = router.query;
+//   const [data, setData] = useState(null);
+
+//   useEffect(() => {
+//     if (!subdomain) return;
+
+//     const fetchData = async () => {
+//       const q = query(collection(db, "orders"), where("domain", "==", `${subdomain}.droppy.kr`));
+//       const snapshot = await getDocs(q);
+
+//       if (!snapshot.empty) {
+//         const doc = snapshot.docs[0].data();
+//         setData(doc);
+//       } else {
+//         setData("notfound");
+//       }
+//     };
+
+//     fetchData();
+//   }, [subdomain]);
+
+//   if (data === null) return <div style={{ padding: 100 }}>로딩 중...</div>;
+//   if (data === "notfound") return <div style={{ padding: 100 }}>존재하지 않는 사이트입니다.</div>;
+
+//   return (
+//     <div style={{ padding: 100 }}>
+//       <h1>{data.user?.name}님의 사이트</h1>
+//       {/* 여기에 컴포넌트 기반으로 구성 */}
+//     </div>
+//   );
+// }
+
+
+
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import dynamic from "next/dynamic";
+
+// ✅ 동적 로딩으로 SSR 충돌 방지
+const CustomerContent = dynamic(() => import("@/components/CustomerContent"), {
+  ssr: false,
+  loading: () => <div style={{ padding: 100 }}>🔄 페이지 불러오는 중...</div>,
+});
 
 export default function CustomerPage() {
   const router = useRouter();
@@ -66,13 +114,21 @@ export default function CustomerPage() {
     if (!subdomain) return;
 
     const fetchData = async () => {
-      const q = query(collection(db, "orders"), where("domain", "==", `${subdomain}.droppy.kr`));
-      const snapshot = await getDocs(q);
+      try {
+        const q = query(
+          collection(db, "orders"),
+          where("domain", "==", `${subdomain}.droppy.kr`)
+        );
+        const snapshot = await getDocs(q);
 
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0].data();
-        setData(doc);
-      } else {
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0].data();
+          setData(doc);
+        } else {
+          setData("notfound");
+        }
+      } catch (err) {
+        console.error("❌ Firestore 조회 에러:", err);
         setData("notfound");
       }
     };
@@ -80,13 +136,8 @@ export default function CustomerPage() {
     fetchData();
   }, [subdomain]);
 
-  if (data === null) return <div style={{ padding: 100 }}>로딩 중...</div>;
-  if (data === "notfound") return <div style={{ padding: 100 }}>존재하지 않는 사이트입니다.</div>;
+  if (data === null) return <div style={{ padding: 100 }}>🔄 로딩 중...</div>;
+  if (data === "notfound") return <div style={{ padding: 100 }}>❌ 존재하지 않는 사이트입니다.</div>;
 
-  return (
-    <div style={{ padding: 100 }}>
-      <h1>{data.user?.name}님의 사이트</h1>
-      {/* 여기에 컴포넌트 기반으로 구성 */}
-    </div>
-  );
+  return <CustomerContent pageData={data} />;
 }
