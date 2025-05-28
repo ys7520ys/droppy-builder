@@ -2025,7 +2025,6 @@ const archiver = require("archiver");
 const fetch = require("node-fetch");
 
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
-const NETLIFY_ZONE_ID = "681f82f7f9e4f8459c00cd6c"; // droppy.kr DNS Zone ID
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
@@ -2033,7 +2032,7 @@ const EXPORT_DIR = path.join(__dirname, "../out");
 
 exports.autoDeploy = onRequest(
   {
-    cors: true, // ✅ 이 줄 추가! 모든 Origin 허용 (로컬에서도 가능)
+    cors: true,
     secrets: [NETLIFY_TOKEN],
   },
   async (req, res) => {
@@ -2113,76 +2112,14 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
       }
 
-      // Netlify DNS CNAME 등록
-      logger.info("🌐 Netlify DNS 등록 요청:", {
-        name: subdomain,
-        value: `${siteName}.netlify.app`
-      });
-
-      const dnsRes = await fetch(
-        `https://api.netlify.com/api/v1/dns_zones/${NETLIFY_ZONE_ID}/dns_records`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            type: "CNAME",
-            name: subdomain,
-            value: `${siteName}.netlify.app`,
-            ttl: 3600,
-          }),
-        }
-      );
-
-      const dnsText = await dnsRes.text();
-      let dnsJson;
-      try {
-        dnsJson = JSON.parse(dnsText);
-      } catch {
-        dnsJson = { raw: dnsText };
-      }
-
-      logger.info("🌐 Netlify DNS CNAME 등록 응답:", dnsJson);
-      if (!dnsRes.ok) {
-        return res.status(500).json({ message: "❌ Netlify DNS 등록 실패", detail: dnsJson });
-      }
-
-      // ✅ 안정적인 커스텀 도메인 연결 방식 (hostname 명확히 전달)
-      logger.info("🔗 Netlify 커스텀 도메인 연결 요청:", { hostname: domain });
-
-      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          hostname: domain, // ← 핵심 수정 포인트
-        }),
-      });
-
-      const domainText = await domainRes.text();
-      let domainJson;
-      try {
-        domainJson = JSON.parse(domainText);
-      } catch {
-        domainJson = { raw: domainText };
-      }
-
-      logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
-      if (!domainRes.ok) {
-        return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
-      }
-
-      // 완료 응답
+      // ✅ 완료 응답 (DNS 등록 생략)
       return res.status(200).json({
-        message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
+        message: "🎉 사이트 생성 + 배포 완료",
         siteName,
         sitePreviewUrl: `https://${siteName}.netlify.app`,
-        customDomainUrl: `https://${domain}`,
+        customDomainUrl: `https://${domain}`, // 와일드카드 연결이 이미 되어 있음
       });
+
     } catch (err) {
       logger.error("🔥 전체 오류 발생:", err);
       return res.status(500).json({ message: "서버 오류", error: err.message });
