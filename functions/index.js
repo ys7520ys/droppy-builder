@@ -2033,6 +2033,7 @@ const EXPORT_DIR = path.join(__dirname, "../out");
 
 exports.autoDeploy = onRequest(
   {
+    cors: true, // ✅ 이 줄 추가! 모든 Origin 허용 (로컬에서도 가능)
     secrets: [NETLIFY_TOKEN],
   },
   async (req, res) => {
