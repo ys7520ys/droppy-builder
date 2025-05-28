@@ -79,7 +79,7 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export', // ✅ 정적 사이트 export 모드
+  // output: 'export', // ✅ 정적 사이트 export 모드
   trailingSlash: true, // ✅ 모든 경로에 '/' 붙이기 (Netlify에서 필수!)
   reactStrictMode: true,
   images: {

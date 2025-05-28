@@ -1,11 +1,8 @@
-// pages/customer/[subdomain].js
-import { useEffect, useState } from "react";
-import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
-import { db } from "../../lib/firebase"; // ← 수정된 경로
+import { db } from "../../lib/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
-// 비동기로 컴포넌트 로딩 (SSR 비활성화)
+// 컴포넌트는 여전히 dynamic import (CSR은 아니고 클라이언트 사이드 렌더링만 제어)
 const CustomerContent = dynamic(() => import("../../components/CustomerContent"), {
   ssr: false,
   loading: () => (
@@ -15,43 +12,35 @@ const CustomerContent = dynamic(() => import("../../components/CustomerContent")
   ),
 });
 
-export default function CustomerPage() {
-  const router = useRouter();
-  const { subdomain } = router.query;
-
-  const [pageData, setPageData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!subdomain) return;
-
-    const fetchData = async () => {
-      try {
-        const fullDomain = `${subdomain}.droppy.kr`;
-        const q = query(collection(db, "orders"), where("domain", "==", fullDomain));
-        const snapshot = await getDocs(q);
-
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          setPageData(doc.data());
-        }
-      } catch (err) {
-        console.error("❌ Firestore 데이터 불러오기 실패:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [subdomain]);
-
-  if (loading) {
-    return <div style={{ padding: "100px", textAlign: "center", color: "#fff" }}>⏳ 로딩 중...</div>;
-  }
-
+export default function CustomerPage({ pageData }) {
   if (!pageData) {
     return <div style={{ padding: "100px", textAlign: "center", color: "red" }}>⚠️ 페이지를 찾을 수 없습니다.</div>;
   }
 
   return <CustomerContent pageData={pageData} />;
+}
+
+// ✅ 서버 사이드에서 Firestore 데이터 불러오기
+export async function getServerSideProps(context) {
+  const subdomain = context.params.subdomain;
+  const fullDomain = `${subdomain}.droppy.kr`;
+
+  try {
+    const q = query(collection(db, "orders"), where("domain", "==", fullDomain));
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      return { props: { pageData: null } };
+    }
+
+    const doc = snapshot.docs[0];
+    return {
+      props: {
+        pageData: doc.data(),
+      },
+    };
+  } catch (error) {
+    console.error("❌ 서버에서 Firestore 불러오기 실패:", error);
+    return { props: { pageData: null } };
+  }
 }
