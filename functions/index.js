@@ -2014,6 +2014,10 @@
 //     }
 //   }
 // );const { onRequest } = require("firebase-functions/v2/https");
+
+
+
+
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2025,6 +2029,9 @@ const archiver = require("archiver");
 const fetch = require("node-fetch");
 
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+
+// ✅ 고정된 droppy-main 사이트 ID (Netlify에서 확인)
+const DROPPY_MAIN_SITE_ID = "your-droppy-main-site-id";
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
@@ -2046,18 +2053,7 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
-      const subdomain = domain.split(".")[0];
-      if (!subdomain || subdomain.trim() === "") {
-        logger.error("❗ 서브도메인 파싱 실패:", domain);
-        return res.status(400).json({ message: "❗ 유효하지 않은 도메인입니다 (서브도메인 없음)" });
-      }
-
-      // Firestore에서 주문 정보 조회
-      const snapshot = await db.collection("orders")
-        .where("domain", "==", domain)
-        .limit(1)
-        .get();
-
+      const snapshot = await db.collection("orders").where("domain", "==", domain).limit(1).get();
       if (snapshot.empty) {
         return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
       }
@@ -2067,37 +2063,18 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // 정적 파일 압축
+      // ✅ zip 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
-
       archive.directory(EXPORT_DIR, false);
       archive.pipe(output);
       await archive.finalize();
       logger.info("📦 정적 zip 압축 완료");
 
-      // Netlify 사이트 생성
-      const siteCreateRes = await fetch("https://api.netlify.com/api/v1/sites", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-        },
-      });
-
-      const siteInfo = await siteCreateRes.json();
-      if (!siteCreateRes.ok) {
-        logger.error("❌ 사이트 생성 실패:", siteInfo);
-        return res.status(500).json({ message: "❌ 사이트 생성 실패", detail: siteInfo });
-      }
-
-      const siteId = siteInfo.site_id;
-      const siteName = siteInfo.name;
-      logger.info("✅ Netlify 새 사이트 생성 완료:", siteId);
-
-      // 정적 파일 배포
+      // ✅ droppy-main 에만 배포
       const zipBuffer = fs.readFileSync(zipPath);
-      const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/deploys`, {
+      const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${DROPPY_MAIN_SITE_ID}/deploys`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
@@ -2112,50 +2089,16 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
       }
 
-      // Netlify 커스텀 도메인 연결 (안정성 추가)
-      if (domain && typeof domain === "string") {
-        try {
-          logger.info("🔗 Netlify 도메인 연결 요청:", { hostname: domain });
-
-          const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              hostname: domain,
-            }),
-          });
-
-          const domainText = await domainRes.text();
-          let domainJson;
-          try {
-            domainJson = JSON.parse(domainText);
-          } catch {
-            domainJson = { raw: domainText };
-          }
-
-          logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
-
-          if (!domainRes.ok) {
-            logger.error("❌ Netlify 도메인 연결 실패:", domainJson);
-          }
-        } catch (domainErr) {
-          logger.error("❗ 도메인 연결 중 예외 발생:", domainErr);
-        }
-      }
-
-      // 최종 응답
+      // ✅ 클라이언트에서는 와일드카드 도메인으로 접속
       return res.status(200).json({
-        message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
-        siteName,
-        sitePreviewUrl: `https://${siteName}.netlify.app`,
-        customDomainUrl: `https://${domain}`,
+        message: "🎉 사이트 배포 완료 (droppy-main)",
+        customDomainUrl: `https://${domain}`, // *.droppy.kr로 자동 라우팅
       });
+
     } catch (err) {
       logger.error("🔥 전체 오류 발생:", err);
       return res.status(500).json({ message: "서버 오류", error: err.message });
     }
   }
 );
+
