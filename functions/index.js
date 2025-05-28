@@ -2112,12 +2112,37 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployText });
       }
 
-      // ✅ 완료 응답 (DNS 등록 생략)
+      // ✅ Netlify 커스텀 도메인 연결 추가
+      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${siteId}/domains`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          hostname: domain,
+        }),
+      });
+
+      const domainText = await domainRes.text();
+      let domainJson;
+      try {
+        domainJson = JSON.parse(domainText);
+      } catch {
+        domainJson = { raw: domainText };
+      }
+      logger.info("🔗 커스텀 도메인 설정 응답:", domainJson);
+
+      if (!domainRes.ok) {
+        return res.status(500).json({ message: "❌ 커스텀 도메인 등록 실패", detail: domainJson });
+      }
+
+      // ✅ 최종 응답
       return res.status(200).json({
-        message: "🎉 사이트 생성 + 배포 완료",
+        message: "🎉 사이트 생성 + 배포 + 도메인 연결 완료",
         siteName,
         sitePreviewUrl: `https://${siteName}.netlify.app`,
-        customDomainUrl: `https://${domain}`, // 와일드카드 연결이 이미 되어 있음
+        customDomainUrl: `https://${domain}`,
       });
 
     } catch (err) {
