@@ -2263,8 +2263,6 @@
 
 
 
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2278,10 +2276,13 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ droppy-builder 전체를 압축할 경로로 수정 (functions/../droppy-builder)
-const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder"); // 실제 경로에 따라 조정 가능
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+// 🔧 경로 및 설정
+const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder");
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 너의 droppy-main Netlify 사이트 ID
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+
+// ❌ 제외할 폴더들 (.next, out, node_modules 등)
+const EXCLUDE_FOLDERS = [".next", "out", "node_modules", ".git", ".firebase", ".DS_Store"];
 
 exports.autoDeploy = onRequest(
   {
@@ -2314,17 +2315,24 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // SSR을 위한 전체 프로젝트 zip 압축
+      // ✅ zip 파일 경로
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
-      archive.directory(PROJECT_DIR, false); // 🔄 droppy-builder 전체 압축
       archive.pipe(output);
-      await archive.finalize();
-      logger.info("📦 SSR 프로젝트 zip 압축 완료");
 
-      // Netlify에 업로드
+      // ✅ 필요한 파일만 압축: 폴더 전체에서 특정 폴더 제외
+      archive.glob("**/*", {
+        cwd: PROJECT_DIR,
+        ignore: EXCLUDE_FOLDERS.map((folder) => `${folder}/**`),
+        dot: true, // .env 등 dotfile 포함
+      });
+
+      await archive.finalize();
+      logger.info("📦 압축 완료: ", zipPath);
+
+      // ✅ Netlify에 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2336,20 +2344,20 @@ exports.autoDeploy = onRequest(
       });
 
       const deployJson = await deployRes.json();
-      logger.info("🚀 배포 응답:", deployJson);
+      logger.info("🚀 Netlify 응답:", deployJson);
 
       if (!deployRes.ok) {
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
       }
 
       return res.status(200).json({
-        message: "🎉 SSR 배포 완료 (droppy-main 사이트)",
+        message: "🎉 배포 성공!",
         previewUrl: deployJson.deploy_ssl_url,
         customDomainUrl: `https://${domain}`,
       });
 
     } catch (err) {
-      logger.error("🔥 전체 오류 발생:", err);
+      logger.error("🔥 오류 발생:", err);
       return res.status(500).json({ message: "서버 오류", error: err.message });
     }
   }
