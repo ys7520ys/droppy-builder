@@ -78,18 +78,11 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
   reactStrictMode: true,
-
-  // ✅ 'standalone' 모드로 서버 빌드 포함 (Netlify SSR 대응)
-  output: 'standalone',
-
-  // 🔽 Netlify에서 '/'를 자동으로 붙이므로 따로 안 써도 무방
-  // trailingSlash: true, ❌ 필요 없음 (SSR 기준)
-
-  // ✅ next/image 최적화 끄려면 유지 가능하지만 SSR에서는 optional
   images: {
     unoptimized: true,
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
