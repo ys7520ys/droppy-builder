@@ -23,7 +23,7 @@
             "id": "C07YZ80055B",
             "title": "기획 포스터",
             "subtitle": "초현실주의와 미래주의의 만남",
-            "mediaUrl": "/images/poster_main.jpg",
+            "mediaPath": "/images/poster_main.jpg",
             "type": "image"
           }
         ]
