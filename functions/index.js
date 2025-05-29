@@ -2275,11 +2275,14 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder"); // ✅ droppy-builder 내부 압축
+// ✅ 압축할 디렉터리: droppy-builder 내부 파일 기준
+const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder");
+
+// ✅ Netlify droppy-main site ID 및 시크릿
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
-// ❌ 제외할 폴더
+// ❌ 제외할 폴더 (빌드 산출물 등)
 const EXCLUDE_FOLDERS = [".next", "out", "node_modules", ".git", ".firebase", ".DS_Store"];
 
 exports.autoDeploy = onRequest(
@@ -2312,13 +2315,13 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ zip 생성
+      // ✅ 압축 생성
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(output);
 
-      // ✅ 핵심! droppy-builder 내부 파일들을 zip 루트로
+      // ✅ droppy-builder 내부 파일을 루트에 압축
       archive.glob("**/*", {
         cwd: PROJECT_DIR,
         ignore: EXCLUDE_FOLDERS.map((folder) => `${folder}/**`),
@@ -2328,7 +2331,7 @@ exports.autoDeploy = onRequest(
       await archive.finalize();
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 업로드
+      // ✅ Netlify 업로드 요청
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
