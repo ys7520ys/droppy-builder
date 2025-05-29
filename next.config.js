@@ -76,17 +76,20 @@
 // };
 // module.exports = nextConfig;
 
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // output: 'export', // ✅ 정적 사이트 export 모드
-  trailingSlash: true, // ✅ 모든 경로에 '/' 붙이기 (Netlify에서 필수!)
   reactStrictMode: true,
+
+  // ✅ 'standalone' 모드로 서버 빌드 포함 (Netlify SSR 대응)
+  output: 'standalone',
+
+  // 🔽 Netlify에서 '/'를 자동으로 붙이므로 따로 안 써도 무방
+  // trailingSlash: true, ❌ 필요 없음 (SSR 기준)
+
+  // ✅ next/image 최적화 끄려면 유지 가능하지만 SSR에서는 optional
   images: {
-    unoptimized: true, // ✅ next/image 최적화 비활성화 (export에 필수)
+    unoptimized: true,
   },
 };
 
 module.exports = nextConfig;
-
-

@@ -2171,6 +2171,99 @@
 
 
 
+// 정적으로 잘 동작하던 파일
+// const { onRequest } = require("firebase-functions/v2/https");
+// const { defineSecret } = require("firebase-functions/params");
+// const logger = require("firebase-functions/logger");
+// const { initializeApp, applicationDefault } = require("firebase-admin/app");
+// const { getFirestore } = require("firebase-admin/firestore");
+// const fs = require("fs");
+// const path = require("path");
+// const archiver = require("archiver");
+
+// initializeApp({ credential: applicationDefault() });
+// const db = getFirestore();
+// const EXPORT_DIR = path.join(__dirname, "../out");
+
+// // ✅ 방법 A: 고정된 droppy-main 사이트에만 배포
+// const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+// const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+
+// exports.autoDeploy = onRequest(
+//   {
+//     cors: true,
+//     secrets: [NETLIFY_TOKEN],
+//   },
+//   async (req, res) => {
+//     try {
+//       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+//       const { domain } = body;
+
+//       logger.info("📨 전달받은 body:", body);
+
+//       if (!domain || typeof domain !== "string" || !domain.includes(".")) {
+//         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
+//       }
+
+//       // Firestore에서 주문 정보 조회
+//       const snapshot = await db.collection("orders")
+//         .where("domain", "==", domain)
+//         .limit(1)
+//         .get();
+
+//       if (snapshot.empty) {
+//         return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
+//       }
+
+//       const doc = snapshot.docs[0];
+//       const orderId = doc.id;
+//       const orderData = doc.data();
+//       logger.info("📦 주문 데이터 로드 완료:", orderData);
+
+//       // 정적 파일 zip 압축
+//       const zipPath = `/tmp/${orderId}.zip`;
+//       const output = fs.createWriteStream(zipPath);
+//       const archive = archiver("zip", { zlib: { level: 9 } });
+
+//       archive.directory(EXPORT_DIR, false);
+//       archive.pipe(output);
+//       await archive.finalize();
+//       logger.info("📦 정적 zip 압축 완료");
+
+//       // Netlify에 배포 (droppy-main 사이트에만!)
+//       const zipBuffer = fs.readFileSync(zipPath);
+//       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
+//         method: "POST",
+//         headers: {
+//           Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+//           "Content-Type": "application/zip",
+//         },
+//         body: zipBuffer,
+//       });
+
+//       const deployJson = await deployRes.json();
+//       logger.info("🚀 배포 응답:", deployJson);
+
+//       if (!deployRes.ok) {
+//         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
+//       }
+
+//       return res.status(200).json({
+//         message: "🎉 배포 완료 (droppy-main 사이트)",
+//         previewUrl: deployJson.deploy_ssl_url,
+//         customDomainUrl: `https://${domain}`,
+//       });
+
+//     } catch (err) {
+//       logger.error("🔥 전체 오류 발생:", err);
+//       return res.status(500).json({ message: "서버 오류", error: err.message });
+//     }
+//   }
+// );
+
+
+
+
 
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -2180,12 +2273,13 @@ const { getFirestore } = require("firebase-admin/firestore");
 const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
+const fetch = require("node-fetch");
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
-const EXPORT_DIR = path.join(__dirname, "../out");
 
-// ✅ 방법 A: 고정된 droppy-main 사이트에만 배포
+// ✅ droppy-builder 전체를 압축할 경로로 수정 (functions/../droppy-builder)
+const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder"); // 실제 경로에 따라 조정 가능
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
@@ -2220,17 +2314,17 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // 정적 파일 zip 압축
+      // SSR을 위한 전체 프로젝트 zip 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
-      archive.directory(EXPORT_DIR, false);
+      archive.directory(PROJECT_DIR, false); // 🔄 droppy-builder 전체 압축
       archive.pipe(output);
       await archive.finalize();
-      logger.info("📦 정적 zip 압축 완료");
+      logger.info("📦 SSR 프로젝트 zip 압축 완료");
 
-      // Netlify에 배포 (droppy-main 사이트에만!)
+      // Netlify에 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2249,7 +2343,7 @@ exports.autoDeploy = onRequest(
       }
 
       return res.status(200).json({
-        message: "🎉 배포 완료 (droppy-main 사이트)",
+        message: "🎉 SSR 배포 완료 (droppy-main 사이트)",
         previewUrl: deployJson.deploy_ssl_url,
         customDomainUrl: `https://${domain}`,
       });
