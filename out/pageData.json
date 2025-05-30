@@ -1,0 +1,26 @@
+{
+  "user": {
+    "name": "Test User",
+    "email": "test@example.com"
+  },
+  "domain": "test.droppy.kr",
+  "headerType": "헤더02",
+  "pages": [
+    {
+      "components": [
+        {
+          "type": "배너04",
+          "mediaType": "image",
+          "mediaUrl": "https://via.placeholder.com/1600x800",
+          "title": "Welcome!",
+          "subTitle": "이건 샘플 배너입니다",
+          "align": "center",
+          "buttonText": "자세히 보기"
+        }
+      ],
+      "menuItems": [
+        { "id": 1, "label": "홈", "link": "/" }
+      ]
+    }
+  ]
+}
