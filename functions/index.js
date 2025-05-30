@@ -2275,8 +2275,9 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ 압축할 디렉터리: droppy-builder 내부 파일 기준
-const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder");
+// // ✅ 압축할 디렉터리: droppy-builder 내부 파일 기준
+// const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder");
+const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder/out");
 
 // ✅ Netlify droppy-main site ID 및 시크릿
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
