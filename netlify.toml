@@ -1,6 +1,9 @@
 [build]
-  publish = "functions/out"
-  command = "echo 'skip build - already exported'"
+  command = "npm run build"
+  publish = "out"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [[redirects]]
   from = "/*"
