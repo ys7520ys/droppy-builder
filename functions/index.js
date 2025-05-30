@@ -2284,7 +2284,8 @@ const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 // ❌ 제외할 폴더 (빌드 산출물 등)
-const EXCLUDE_FOLDERS = [".next", "out", "node_modules", ".git", ".firebase", ".DS_Store"];
+// const EXCLUDE_FOLDERS = [".next", "out", "node_modules", ".git", ".firebase", ".DS_Store"];
+const EXCLUDE_FOLDERS = [".DS_Store"]; // 혹은 그냥 [] 비워도 괜찮음
 
 exports.autoDeploy = onRequest(
   {
