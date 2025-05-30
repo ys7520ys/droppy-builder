@@ -1,9 +1,6 @@
 [build]
-  command = "npm run build"
-  publish = "out"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+command = "echo 'skip build - already exported'" # Netlify의 자동 build 무시
+publish = "functions/out"                         # export 결과물 위치
 
 [[redirects]]
   from = "/*"
