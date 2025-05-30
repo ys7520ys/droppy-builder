@@ -2,6 +2,10 @@
   command = "echo 'skip build - already exported'"
   publish = "out"
 
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+  condition = "false"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
