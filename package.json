@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "build-export": "next build && next export -o functions/out"
+    "export": "next export"
   },
   "dependencies": {
     "firebase": "^11.7.1",

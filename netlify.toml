@@ -1,5 +1,5 @@
 [build]
-  command = "echo 'skip build - already exported'"
+  command = "npm run build && npm run export"
   publish = "out"
   
 [[redirects]]
