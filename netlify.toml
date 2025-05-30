@@ -1,7 +1,13 @@
 [build]
-command = "npm run build"  # ✅ export 없이!
-publish = "out"
+command = "npm run build"         
+publish = "out"                  
+functions = "functions"          
 
+[functions]
+node_bundler = "esbuild"           
+
+[[plugins]]
+package = "@netlify/plugin-nextjs" 
 
 [[redirects]]
 from = "/*"
