@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "firebase": "^11.7.1",
     "firebase-admin": "^13.4.0",
     "framer-motion": "^12.10.5",
