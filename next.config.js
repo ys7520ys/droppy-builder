@@ -85,4 +85,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig; // ✅ CommonJS 방식
+module.exports = nextConfig; 
