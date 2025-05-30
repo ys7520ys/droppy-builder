@@ -2261,7 +2261,6 @@
 //   }
 // );
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2275,10 +2274,10 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ droppy-builder/out 내부만 압축할 경로로 지정
+// ✅ 압축 대상 디렉터리: droppy-builder/out
 const PROJECT_DIR = path.resolve(__dirname, "../../droppy-builder/out");
 
-// ✅ Netlify 정보
+// ✅ Netlify 설정
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
@@ -2298,6 +2297,7 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
+      // ✅ 주문 데이터 가져오기
       const snapshot = await db.collection("orders")
         .where("domain", "==", domain)
         .limit(1)
@@ -2312,19 +2312,23 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ 압축 생성
+      // ✅ 압축 경로 지정
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(output);
 
-      // ✅ 핵심: out 폴더 안의 내용물만 루트로 압축
+      // ✅ 압축할 파일 로그 출력 (디버깅용)
+      const files = fs.readdirSync(PROJECT_DIR);
+      files.forEach(file => logger.info("📂 압축 대상 파일:", file));
+
+      // ✅ 핵심 압축 방식: out 내부 파일만 루트에 압축
       archive.directory(PROJECT_DIR + "/", false);
 
       await archive.finalize();
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 업로드 요청
+      // ✅ Netlify에 zip 파일 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
