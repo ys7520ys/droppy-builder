@@ -2514,7 +2514,7 @@ initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
 const PROJECT_DIR = path.resolve(__dirname, "./out");
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 너의 Netlify site ID
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2531,14 +2531,10 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
-      // 🔍 주문 정보 조회
-      const snapshot = await db.collection("orders")
-        .where("domain", "==", domain)
-        .limit(1)
-        .get();
-
+      // 🔍 Firestore에서 주문 정보 조회
+      const snapshot = await db.collection("orders").where("domain", "==", domain).limit(1).get();
       if (snapshot.empty) {
-        return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
+        return res.status(404).json({ message: "❌ 주문 정보 없음" });
       }
 
       const doc = snapshot.docs[0];
@@ -2546,27 +2542,22 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       const subdomain = domain.split(".")[0];
 
-      // ✅ static 복사 (한 번만)
-      const NEXT_STATIC_SOURCE = path.join(__dirname, "..", ".next", "static");
-      const NEXT_STATIC_DEST = path.join(PROJECT_DIR, "_next", "static");
-
-      if (!fs.existsSync(NEXT_STATIC_DEST)) {
-        fsExtra.mkdirpSync(NEXT_STATIC_DEST);
-        fsExtra.copySync(NEXT_STATIC_SOURCE, NEXT_STATIC_DEST, { recursive: true });
+      // ✅ .next/static 폴더 한 번만 복사
+      const STATIC_SOURCE = path.join(__dirname, "..", ".next", "static");
+      const STATIC_DEST = path.join(PROJECT_DIR, "_next", "static");
+      if (!fs.existsSync(STATIC_DEST)) {
+        fsExtra.mkdirpSync(STATIC_DEST);
+        fsExtra.copySync(STATIC_SOURCE, STATIC_DEST);
         logger.info("✅ .next/static 복사 완료");
       } else {
-        logger.info("⏩ .next/static 이미 존재함 - 복사 생략");
+        logger.info("⏩ .next/static 이미 있음 (복사 생략)");
       }
 
-      // ✅ 고객 디렉토리 생성 및 데이터 저장
+      // ✅ customer/[subdomain] 디렉토리 구성
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
 
-      fs.writeFileSync(
-        path.join(customerDir, "pageData.json"),
-        JSON.stringify(orderData, null, 2),
-        "utf-8"
-      );
+      fs.writeFileSync(path.join(customerDir, "pageData.json"), JSON.stringify(orderData, null, 2), "utf-8");
 
       const customerHTML = `
 <!DOCTYPE html>
@@ -2587,7 +2578,7 @@ exports.autoDeploy = onRequest(
 
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
 
-      // ✅ 루트 index.html (리디렉션용)
+      // ✅ 최상단 index.html → /customer/서브도메인 리디렉션
       const redirectHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2596,13 +2587,13 @@ exports.autoDeploy = onRequest(
     <title>Redirecting...</title>
   </head>
   <body style="background:#000; color:#fff; text-align:center; padding:100px;">
-    ⏳ 잠시만 기다려 주세요... 고객 페이지로 이동 중입니다.
+    ⏳ 고객 페이지로 이동 중입니다...
   </body>
 </html>`.trim();
 
       fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
 
-      // ✅ zip 압축
+      // ✅ ZIP으로 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2612,9 +2603,8 @@ exports.autoDeploy = onRequest(
       archive.directory(path.join(PROJECT_DIR, "customer"), "customer");
       archive.file(path.join(PROJECT_DIR, "index.html"), { name: "index.html" });
 
-      const redirectsPath = path.join(PROJECT_DIR, "_redirects");
-      if (fs.existsSync(redirectsPath)) {
-        archive.file(redirectsPath, { name: "_redirects" });
+      if (fs.existsSync(path.join(PROJECT_DIR, "_redirects"))) {
+        archive.file(path.join(PROJECT_DIR, "_redirects"), { name: "_redirects" });
       }
 
       await new Promise((resolve, reject) => {
@@ -2623,8 +2613,9 @@ exports.autoDeploy = onRequest(
         archive.finalize();
       });
 
-      logger.info(`📦 압축 완료: ${zipPath}`);
+      logger.info(`📦 ZIP 압축 완료: ${zipPath}`);
 
+      // ✅ Netlify로 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2636,7 +2627,6 @@ exports.autoDeploy = onRequest(
       });
 
       const deployJson = await deployRes.json();
-      logger.info("🚀 Netlify 응답:", deployJson);
 
       if (!deployRes.ok) {
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
