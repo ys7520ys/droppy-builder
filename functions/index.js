@@ -2261,7 +2261,6 @@
 //   }
 // );
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2271,15 +2270,18 @@ const fs = require("fs");
 const path = require("path");
 const archiver = require("archiver");
 const fetch = require("node-fetch");
+const { execSync } = require("child_process");
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ Functions 디렉토리 내부의 out 폴더 기준
-const PROJECT_DIR = path.resolve(__dirname, "./out");
-
+// ✅ 경로 정의
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+
+const TEMPLATE_DIR = path.resolve(__dirname, "../../droppy-builder");
+const OUT_SRC_DIR = path.resolve(TEMPLATE_DIR, "out");
+const OUT_DEST_DIR = path.resolve(__dirname, "./out");
 
 exports.autoDeploy = onRequest(
   {
@@ -2311,16 +2313,29 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ 압축 생성
+      // ✅ 1. droppy-builder에서 export 실행
+      logger.info("🏗 next build + export 시작");
+      execSync("npm run build && npm run export", {
+        cwd: TEMPLATE_DIR,
+        stdio: "inherit",
+      });
+      logger.info("✅ export 완료");
+
+      // ✅ 2. out 복사: 기존 삭제 후 새로 복사
+      if (fs.existsSync(OUT_DEST_DIR)) {
+        fs.rmSync(OUT_DEST_DIR, { recursive: true, force: true });
+      }
+      fs.cpSync(OUT_SRC_DIR, OUT_DEST_DIR, { recursive: true });
+      logger.info("✅ out 폴더 복사 완료");
+
+      // ✅ 3. 압축 생성
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(output);
 
-      // ✅ out 내부 파일들을 zip 루트에 넣음
-      archive.directory(PROJECT_DIR + "/", false);
+      archive.directory(OUT_DEST_DIR + "/", false);
 
-      // ✅ 압축 완료를 보장 (중요!)
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
         output.on("error", reject);
@@ -2329,7 +2344,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 업로드
+      // ✅ 4. Netlify 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
