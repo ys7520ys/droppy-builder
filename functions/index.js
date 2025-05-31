@@ -2531,7 +2531,7 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
-      // 🔍 Firestore에서 주문 데이터 가져오기
+      // ✅ Firestore에서 주문 데이터 가져오기
       const snapshot = await db.collection("orders")
         .where("domain", "==", domain)
         .limit(1)
@@ -2544,19 +2544,19 @@ exports.autoDeploy = onRequest(
       const doc = snapshot.docs[0];
       const orderId = doc.id;
       const orderData = doc.data();
-
       const subdomain = domain.split(".")[0];
+
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fs.mkdirSync(customerDir, { recursive: true });
 
-      // ✅ 고객의 pageData.json 저장
+      // ✅ 고객 전용 JSON 저장
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
         JSON.stringify(orderData, null, 2),
         "utf-8"
       );
 
-      // ✅ 고객 페이지용 index.html (CSR 기반)
+      // ✅ 고객 전용 index.html (CSR로 로드)
       const customerHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2578,7 +2578,7 @@ exports.autoDeploy = onRequest(
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
       logger.info(`📄 customer index.html 생성됨: ${fs.existsSync(path.join(customerDir, "index.html"))}`);
 
-      // ✅ 루트 index.html → 자동 리디렉션
+      // ✅ 루트 리디렉션 index.html 생성
       const redirectHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2595,15 +2595,22 @@ exports.autoDeploy = onRequest(
       fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
       logger.info(`📄 루트 index.html 생성됨: ${fs.existsSync(path.join(PROJECT_DIR, "index.html"))}`);
 
-      logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
-
-      // ✅ 전체 폴더 압축
+      // ✅ 압축 시작
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       archive.pipe(output);
-      archive.directory(PROJECT_DIR + "/", false);
+
+      // ✅ 포함할 파일 및 폴더
+      archive.directory(path.join(PROJECT_DIR, "_next"), "_next");
+      archive.directory(path.join(PROJECT_DIR, "customer"), "customer");
+      archive.file(path.join(PROJECT_DIR, "index.html"), { name: "index.html" });
+
+      const redirectsPath = path.join(PROJECT_DIR, "_redirects");
+      if (fs.existsSync(redirectsPath)) {
+        archive.file(redirectsPath, { name: "_redirects" });
+      }
 
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
