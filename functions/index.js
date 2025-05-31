@@ -2372,8 +2372,6 @@
 
 
 
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2387,7 +2385,6 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ Functions 내부의 out 기준
 const PROJECT_DIR = path.resolve(__dirname, "./out");
 
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
@@ -2423,19 +2420,19 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ 고객별 경로 생성
+      // ✅ 고객 폴더 경로 설정
       const subdomain = domain.split(".")[0];
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fs.mkdirSync(customerDir, { recursive: true });
 
-      // ✅ pageData.json 저장
+      // ✅ 고객 데이터 저장
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
-        JSON.stringify(orderData),
+        JSON.stringify(orderData, null, 2),
         "utf-8"
       );
 
-      // ✅ index.html 생성 (CSR 로더)
+      // ✅ CSR 기반 index.html 생성
       const html = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2455,7 +2452,7 @@ exports.autoDeploy = onRequest(
 
       logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
 
-      // ✅ 압축 생성
+      // ✅ 전체 압축 파일 생성
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2470,7 +2467,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify에 업로드
+      // ✅ Netlify 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2491,8 +2488,8 @@ exports.autoDeploy = onRequest(
       return res.status(200).json({
         message: "🎉 배포 성공!",
         previewUrl: deployJson.deploy_ssl_url,
-        customerUrl: `https://${domain}`, // 예: hairu.droppy.kr
-        subdomainPath: `/customer/${subdomain}/`, // 정적 구조 접근용
+        customerUrl: `https://${domain}`,
+        subdomainPath: `/customer/${subdomain}/`, // 예: /customer/hhaaa/
       });
 
     } catch (err) {
