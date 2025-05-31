@@ -2261,6 +2261,7 @@
 //   }
 // );
 
+
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2274,8 +2275,10 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
+// ✅ Functions 디렉토리 내부의 out 폴더 기준
 const PROJECT_DIR = path.resolve(__dirname, "./out");
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 🔁 고객용 사이트 ID
+
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2308,43 +2311,16 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ out 폴더 초기화
-      if (fs.existsSync(PROJECT_DIR)) {
-        fs.rmSync(PROJECT_DIR, { recursive: true, force: true });
-      }
-      fs.mkdirSync(PROJECT_DIR, { recursive: true });
-
-      // ✅ index.html 자동 생성
-      const comp = orderData.pages?.[0]?.components?.[0];
-      const html = `
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${comp?.title || "Droppy 사이트"}</title>
-</head>
-<body style="text-align: center; font-family: sans-serif; padding: 2rem;">
-  <h1>${comp?.title || "타이틀 없음"}</h1>
-  <p>${comp?.subTitle || "설명 없음"}</p>
-  ${comp?.mediaType === "video" && comp?.mediaUrl ? `
-    <video src="${comp.mediaUrl}" autoplay loop muted style="max-width: 100%; margin-top: 2rem;"></video>
-  ` : ""}
-</body>
-</html>
-      `.trim();
-
-      fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), html, "utf-8");
-      logger.info("✅ index.html 생성 완료");
-
       // ✅ 압축 생성
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(output);
 
+      // ✅ out 내부 파일들을 zip 루트에 넣음
       archive.directory(PROJECT_DIR + "/", false);
 
+      // ✅ 압축 완료를 보장 (중요!)
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
         output.on("error", reject);
@@ -2353,7 +2329,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 배포
+      // ✅ Netlify 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2371,25 +2347,8 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
       }
 
-      // ✅ Netlify 도메인 연결 (alias 등록)
-      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/domains`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name: domain }),
-      });
-
-      const domainJson = await domainRes.json();
-      logger.info("🌐 도메인 연결 응답:", domainJson);
-
-      if (!domainRes.ok) {
-        return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainJson });
-      }
-
       return res.status(200).json({
-        message: "🎉 배포 및 도메인 연결 성공!",
+        message: "🎉 배포 성공!",
         previewUrl: deployJson.deploy_ssl_url,
         customDomainUrl: `https://${domain}`,
       });
