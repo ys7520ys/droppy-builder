@@ -2514,7 +2514,7 @@ initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
 const PROJECT_DIR = path.resolve(__dirname, "./out");
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 예성님 프로젝트 Site ID
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2544,20 +2544,19 @@ exports.autoDeploy = onRequest(
       const orderId = doc.id;
       const orderData = doc.data();
 
-      // ✅ 고객 페이지 디렉토리 생성
       const subdomain = domain.split(".")[0];
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fs.mkdirSync(customerDir, { recursive: true });
 
-      // ✅ pageData.json 저장
+      // ✅ 고객 JSON 데이터 저장
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
         JSON.stringify(orderData, null, 2),
         "utf-8"
       );
 
-      // ✅ index.html: Next.js 로더가 사용할 수 있는 기본 구조로 수정
-      const html = `
+      // ✅ 고객 페이지용 index.html 생성
+      const customerHTML = `
 <!DOCTYPE html>
 <html lang="ko">
   <head>
@@ -2575,16 +2574,33 @@ exports.autoDeploy = onRequest(
 </html>
       `.trim();
 
-      fs.writeFileSync(path.join(customerDir, "index.html"), html, "utf-8");
+      fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
+
+      // ✅ 루트 index.html → 고객 페이지로 리디렉션
+      const redirectHTML = `
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta http-equiv="refresh" content="0;url=/customer/${subdomain}/" />
+    <title>Redirecting...</title>
+  </head>
+  <body style="background:#000; color:#fff; text-align:center; padding:100px;">
+    ⏳ 잠시만 기다려 주세요... 고객 페이지로 이동 중입니다.
+  </body>
+</html>
+      `.trim();
+
+      fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
+
       logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
 
-      // ✅ 전체 디렉터리 압축
+      // ✅ 전체 out/ 디렉터리 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       archive.pipe(output);
-      archive.directory(PROJECT_DIR + "/", false); // out 전체 포함
+      archive.directory(PROJECT_DIR + "/", false);
 
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
@@ -2594,7 +2610,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify로 업로드
+      // ✅ Netlify에 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
