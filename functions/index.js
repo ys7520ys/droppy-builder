@@ -2568,7 +2568,7 @@ exports.autoDeploy = onRequest(
     <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
     <script defer src="/_next/static/chunks/main.js"></script>
     <script defer src="/_next/static/chunks/pages/_app.js"></script>
-    <script defer src="/_next/static/chunks/pages/customer/[subdomain].js"></script>
+    <script defer src="/_next/static/chunks/pages/customer/fixed.js"></script>
     <link rel="stylesheet" href="/_next/static/css/app.css" />
   </head>
   <body style="margin:0;background:#000;color:#fff;">
