@@ -17,6 +17,7 @@
     "cors": "^2.8.5",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^6.3.2",
+    "fs-extra": "^11.3.0",
     "node-fetch": "^2.7.0",
     "tar-stream": "^3.1.7"
   },
