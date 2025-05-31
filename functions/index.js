@@ -2261,7 +2261,6 @@
 //   }
 // );
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2276,7 +2275,7 @@ initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
 const PROJECT_DIR = path.resolve(__dirname, "./out");
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // 🔁 고객용 사이트 ID
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2354,7 +2353,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 업로드
+      // ✅ Netlify 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2372,8 +2371,25 @@ exports.autoDeploy = onRequest(
         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
       }
 
+      // ✅ Netlify 도메인 연결 (alias 등록)
+      const domainRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/domains`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: domain }),
+      });
+
+      const domainJson = await domainRes.json();
+      logger.info("🌐 도메인 연결 응답:", domainJson);
+
+      if (!domainRes.ok) {
+        return res.status(500).json({ message: "❌ 도메인 연결 실패", detail: domainJson });
+      }
+
       return res.status(200).json({
-        message: "🎉 배포 성공!",
+        message: "🎉 배포 및 도메인 연결 성공!",
         previewUrl: deployJson.deploy_ssl_url,
         customDomainUrl: `https://${domain}`,
       });
