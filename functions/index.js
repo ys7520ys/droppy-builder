@@ -2531,6 +2531,7 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
+      // 🔍 Firestore에서 주문 데이터 가져오기
       const snapshot = await db.collection("orders")
         .where("domain", "==", domain)
         .limit(1)
@@ -2548,14 +2549,14 @@ exports.autoDeploy = onRequest(
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fs.mkdirSync(customerDir, { recursive: true });
 
-      // ✅ pageData.json 저장
+      // ✅ 고객의 pageData.json 저장
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
         JSON.stringify(orderData, null, 2),
         "utf-8"
       );
 
-      // ✅ customer 전용 index.html (CSR용)
+      // ✅ 고객 페이지용 index.html (CSR 기반)
       const customerHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2563,18 +2564,19 @@ exports.autoDeploy = onRequest(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
+    <script defer src="/_next/static/chunks/main.js"></script>
+    <script defer src="/_next/static/chunks/pages/_app.js"></script>
+    <script defer src="/_next/static/chunks/pages/customer/[subdomain].js"></script>
+    <link rel="stylesheet" href="/_next/static/css/app.css" />
   </head>
-  <body style="margin:0;background:#000;color:#fff;text-align:center;padding:100px;">
-    🔄 로딩 중... (고객 콘텐츠가 로드됩니다)
-    <script>
-      // React 앱이 클라이언트에서 실행될 것으로 가정
-      location.href = "/";
-    </script>
+  <body style="margin:0;background:#000;color:#fff;">
+    <div id="__next">🔄 고객 콘텐츠 로딩 중...</div>
   </body>
 </html>
       `.trim();
 
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
+      logger.info(`📄 customer index.html 생성됨: ${fs.existsSync(path.join(customerDir, "index.html"))}`);
 
       // ✅ 루트 index.html → 자동 리디렉션
       const redirectHTML = `
@@ -2591,10 +2593,11 @@ exports.autoDeploy = onRequest(
       `.trim();
 
       fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
+      logger.info(`📄 루트 index.html 생성됨: ${fs.existsSync(path.join(PROJECT_DIR, "index.html"))}`);
 
       logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
 
-      // ✅ 압축 및 업로드
+      // ✅ 전체 폴더 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2608,9 +2611,9 @@ exports.autoDeploy = onRequest(
         archive.finalize();
       });
 
-      logger.info("📦 압축 완료:", zipPath);
+      logger.info(`📦 압축 완료: ${zipPath}`);
 
-      // ✅ Netlify 업로드
+      // ✅ Netlify에 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
