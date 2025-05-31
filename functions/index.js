@@ -2372,6 +2372,134 @@
 
 
 
+// const { onRequest } = require("firebase-functions/v2/https");
+// const { defineSecret } = require("firebase-functions/params");
+// const logger = require("firebase-functions/logger");
+// const { initializeApp, applicationDefault } = require("firebase-admin/app");
+// const { getFirestore } = require("firebase-admin/firestore");
+// const fs = require("fs");
+// const path = require("path");
+// const archiver = require("archiver");
+// const fetch = require("node-fetch");
+
+// initializeApp({ credential: applicationDefault() });
+// const db = getFirestore();
+
+// const PROJECT_DIR = path.resolve(__dirname, "./out");
+
+// const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+// const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
+
+// exports.autoDeploy = onRequest(
+//   {
+//     cors: true,
+//     secrets: [NETLIFY_TOKEN],
+//   },
+//   async (req, res) => {
+//     try {
+//       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+//       const { domain } = body;
+
+//       logger.info("📨 전달받은 body:", body);
+
+//       if (!domain || typeof domain !== "string" || !domain.includes(".")) {
+//         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
+//       }
+
+//       const snapshot = await db.collection("orders")
+//         .where("domain", "==", domain)
+//         .limit(1)
+//         .get();
+
+//       if (snapshot.empty) {
+//         return res.status(404).json({ message: "❌ 도메인으로 주문 데이터 없음" });
+//       }
+
+//       const doc = snapshot.docs[0];
+//       const orderId = doc.id;
+//       const orderData = doc.data();
+//       logger.info("📦 주문 데이터 로드 완료:", orderData);
+
+//       // ✅ 고객 폴더 경로 설정
+//       const subdomain = domain.split(".")[0];
+//       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
+//       fs.mkdirSync(customerDir, { recursive: true });
+
+//       // ✅ 고객 데이터 저장
+//       fs.writeFileSync(
+//         path.join(customerDir, "pageData.json"),
+//         JSON.stringify(orderData, null, 2),
+//         "utf-8"
+//       );
+
+//       // ✅ CSR 기반 index.html 생성
+//       const html = `
+// <!DOCTYPE html>
+// <html lang="ko">
+// <head>
+//   <meta charset="UTF-8" />
+//   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+//   <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
+// </head>
+// <body style="margin:0;background:#000;color:#fff;">
+//   <div id="__next">🔄 로딩 중...</div>
+//   <script src="/_next/static/chunks/main.js"></script>
+// </body>
+// </html>
+//       `.trim();
+
+//       fs.writeFileSync(path.join(customerDir, "index.html"), html, "utf-8");
+
+//       logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
+
+//       // ✅ 전체 압축 파일 생성
+//       const zipPath = `/tmp/${orderId}.zip`;
+//       const output = fs.createWriteStream(zipPath);
+//       const archive = archiver("zip", { zlib: { level: 9 } });
+//       archive.pipe(output);
+//       archive.directory(PROJECT_DIR + "/", false);
+
+//       await new Promise((resolve, reject) => {
+//         output.on("close", resolve);
+//         output.on("error", reject);
+//         archive.finalize();
+//       });
+
+//       logger.info("📦 압축 완료:", zipPath);
+
+//       // ✅ Netlify 업로드
+//       const zipBuffer = fs.readFileSync(zipPath);
+//       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
+//         method: "POST",
+//         headers: {
+//           Authorization: `Bearer ${NETLIFY_TOKEN.value()}`,
+//           "Content-Type": "application/zip",
+//         },
+//         body: zipBuffer,
+//       });
+
+//       const deployJson = await deployRes.json();
+//       logger.info("🚀 Netlify 응답:", deployJson);
+
+//       if (!deployRes.ok) {
+//         return res.status(500).json({ message: "❌ 배포 실패", detail: deployJson });
+//       }
+
+//       return res.status(200).json({
+//         message: "🎉 배포 성공!",
+//         previewUrl: deployJson.deploy_ssl_url,
+//         customerUrl: `https://${domain}`,
+//         subdomainPath: `/customer/${subdomain}/`, // 예: /customer/hhaaa/
+//       });
+
+//     } catch (err) {
+//       logger.error("🔥 오류 발생:", err.stack || err);
+//       return res.status(500).json({ message: "서버 오류", error: err.message });
+//     }
+//   }
+// );
+
+
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2386,7 +2514,6 @@ initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
 const PROJECT_DIR = path.resolve(__dirname, "./out");
-
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
@@ -2399,8 +2526,6 @@ exports.autoDeploy = onRequest(
     try {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { domain } = body;
-
-      logger.info("📨 전달받은 body:", body);
 
       if (!domain || typeof domain !== "string" || !domain.includes(".")) {
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
@@ -2418,46 +2543,48 @@ exports.autoDeploy = onRequest(
       const doc = snapshot.docs[0];
       const orderId = doc.id;
       const orderData = doc.data();
-      logger.info("📦 주문 데이터 로드 완료:", orderData);
 
-      // ✅ 고객 폴더 경로 설정
+      // ✅ 고객 페이지 디렉토리 생성
       const subdomain = domain.split(".")[0];
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fs.mkdirSync(customerDir, { recursive: true });
 
-      // ✅ 고객 데이터 저장
+      // ✅ pageData.json 저장
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
         JSON.stringify(orderData, null, 2),
         "utf-8"
       );
 
-      // ✅ CSR 기반 index.html 생성
+      // ✅ index.html: Next.js 로더가 사용할 수 있는 기본 구조로 수정
       const html = `
 <!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
-</head>
-<body style="margin:0;background:#000;color:#fff;">
-  <div id="__next">🔄 로딩 중...</div>
-  <script src="/_next/static/chunks/main.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
+    <script defer src="/_next/static/chunks/main.js"></script>
+    <script defer src="/_next/static/chunks/pages/_app.js"></script>
+    <script defer src="/_next/static/chunks/pages/customer/[subdomain].js"></script>
+    <link rel="stylesheet" href="/_next/static/css/app.css" />
+  </head>
+  <body style="margin:0;background:#000;color:#fff;">
+    <div id="__next">🔄 로딩 중...</div>
+  </body>
 </html>
       `.trim();
 
       fs.writeFileSync(path.join(customerDir, "index.html"), html, "utf-8");
-
       logger.info(`✅ 고객 폴더 생성 완료: ${customerDir}`);
 
-      // ✅ 전체 압축 파일 생성
+      // ✅ 전체 디렉터리 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
+
       archive.pipe(output);
-      archive.directory(PROJECT_DIR + "/", false);
+      archive.directory(PROJECT_DIR + "/", false); // out 전체 포함
 
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
@@ -2467,7 +2594,7 @@ exports.autoDeploy = onRequest(
 
       logger.info("📦 압축 완료:", zipPath);
 
-      // ✅ Netlify 업로드
+      // ✅ Netlify로 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2489,7 +2616,7 @@ exports.autoDeploy = onRequest(
         message: "🎉 배포 성공!",
         previewUrl: deployJson.deploy_ssl_url,
         customerUrl: `https://${domain}`,
-        subdomainPath: `/customer/${subdomain}/`, // 예: /customer/hhaaa/
+        subdomainPath: `/customer/${subdomain}/`,
       });
 
     } catch (err) {
