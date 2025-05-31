@@ -2275,7 +2275,7 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ Functions 디렉터리 내부에 복사된 out 폴더 기준
+// ✅ Functions 디렉토리 내부의 out 폴더 기준
 const PROJECT_DIR = path.resolve(__dirname, "./out");
 
 const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
@@ -2317,10 +2317,16 @@ exports.autoDeploy = onRequest(
       const archive = archiver("zip", { zlib: { level: 9 } });
       archive.pipe(output);
 
-      // ✅ out 내부만 루트에 압축 (Functions 안에 복사된 것 기준)
+      // ✅ out 내부 파일들을 zip 루트에 넣음
       archive.directory(PROJECT_DIR + "/", false);
 
-      await archive.finalize();
+      // ✅ 압축 완료를 보장 (중요!)
+      await new Promise((resolve, reject) => {
+        output.on("close", resolve);
+        output.on("error", reject);
+        archive.finalize();
+      });
+
       logger.info("📦 압축 완료:", zipPath);
 
       // ✅ Netlify 업로드
