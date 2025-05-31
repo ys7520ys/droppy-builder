@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "autobuild": "node preBuildAndCopy.js"
+    "autobuild": "node preBuildAndCopy.js",
+    "autodeploy": "npm run build && cp -R .next/static functions/out/_next/static && firebase deploy --only functions"
   },
   "dependencies": {
     "archiver": "^7.0.1",

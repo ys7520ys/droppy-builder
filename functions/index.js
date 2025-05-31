@@ -2505,7 +2505,7 @@ const logger = require("firebase-functions/logger");
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const fs = require("fs");
-const fsExtra = require("fs-extra"); // ✅ fs-extra 추가
+const fsExtra = require("fs-extra");
 const path = require("path");
 const archiver = require("archiver");
 const fetch = require("node-fetch");
@@ -2546,15 +2546,21 @@ exports.autoDeploy = onRequest(
       const orderData = doc.data();
       const subdomain = domain.split(".")[0];
 
-      // ✅ _next/static 자동 복사
+      // ✅ static 복사 (한 번만)
       const NEXT_STATIC_SOURCE = path.join(__dirname, "..", ".next", "static");
       const NEXT_STATIC_DEST = path.join(PROJECT_DIR, "_next", "static");
-      fsExtra.mkdirpSync(NEXT_STATIC_DEST);
-      fsExtra.copySync(NEXT_STATIC_SOURCE, NEXT_STATIC_DEST, { recursive: true });
+
+      if (!fs.existsSync(NEXT_STATIC_DEST)) {
+        fsExtra.mkdirpSync(NEXT_STATIC_DEST);
+        fsExtra.copySync(NEXT_STATIC_SOURCE, NEXT_STATIC_DEST, { recursive: true });
+        logger.info("✅ .next/static 복사 완료");
+      } else {
+        logger.info("⏩ .next/static 이미 존재함 - 복사 생략");
+      }
 
       // ✅ 고객 디렉토리 생성 및 데이터 저장
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
-      fs.mkdirSync(customerDir, { recursive: true });
+      fsExtra.mkdirpSync(customerDir);
 
       fs.writeFileSync(
         path.join(customerDir, "pageData.json"),
@@ -2562,7 +2568,6 @@ exports.autoDeploy = onRequest(
         "utf-8"
       );
 
-      // ✅ 고객 전용 index.html (CSR 진입점)
       const customerHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2578,13 +2583,11 @@ exports.autoDeploy = onRequest(
   <body style="margin:0;background:#000;color:#fff;">
     <div id="__next">🔄 고객 콘텐츠 로딩 중...</div>
   </body>
-</html>
-      `.trim();
+</html>`.trim();
 
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
-      logger.info(`📄 customer index.html 생성됨: ${fs.existsSync(path.join(customerDir, "index.html"))}`);
 
-      // ✅ 루트 index.html → 리디렉션
+      // ✅ 루트 index.html (리디렉션용)
       const redirectHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2595,19 +2598,16 @@ exports.autoDeploy = onRequest(
   <body style="background:#000; color:#fff; text-align:center; padding:100px;">
     ⏳ 잠시만 기다려 주세요... 고객 페이지로 이동 중입니다.
   </body>
-</html>
-      `.trim();
+</html>`.trim();
 
       fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
-      logger.info(`📄 루트 index.html 생성됨: ${fs.existsSync(path.join(PROJECT_DIR, "index.html"))}`);
 
-      // ✅ 압축 및 배포
+      // ✅ zip 압축
       const zipPath = `/tmp/${orderId}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       archive.pipe(output);
-
       archive.directory(path.join(PROJECT_DIR, "_next"), "_next");
       archive.directory(path.join(PROJECT_DIR, "customer"), "customer");
       archive.file(path.join(PROJECT_DIR, "index.html"), { name: "index.html" });
