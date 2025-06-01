@@ -2653,7 +2653,6 @@
 
 
 
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2668,8 +2667,11 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-const PROJECT_DIR = path.resolve(__dirname, "../out"); // ✅ build 결과물 위치
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958"; // ✅ 너의 Netlify Site ID
+const PROJECT_DIR = path.join(__dirname, "../out"); // ✅ 상대 경로로 안전하게 설정
+const STATIC_SOURCE = path.join(__dirname, "../.next/static");
+const STATIC_DEST = path.join(PROJECT_DIR, "_next/static");
+
+const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2688,7 +2690,6 @@ exports.autoDeploy = onRequest(
 
       const subdomain = domain.split(".")[0];
 
-      // 🔍 주문 정보 조회
       const snapshot = await db.collection("orders").where("domain", "==", domain).limit(1).get();
       if (snapshot.empty) {
         return res.status(404).json({ message: "❌ 주문 정보 없음" });
@@ -2698,20 +2699,20 @@ exports.autoDeploy = onRequest(
       const orderId = doc.id;
       const orderData = doc.data();
 
-      // ✅ .next/static 복사 (build 결과)
-      const STATIC_SOURCE = path.join(__dirname, "..", ".next", "static");
-      const STATIC_DEST = path.join(PROJECT_DIR, "_next", "static");
-      if (!fs.existsSync(STATIC_DEST)) {
-        fsExtra.mkdirpSync(STATIC_DEST);
+      // ✅ 정리 및 생성
+      fsExtra.removeSync(PROJECT_DIR);
+      fsExtra.mkdirpSync(STATIC_DEST);
+
+      // ✅ static 복사
+      if (fs.existsSync(STATIC_SOURCE)) {
         fsExtra.copySync(STATIC_SOURCE, STATIC_DEST);
         logger.info("✅ .next/static 복사 완료");
       }
 
-      // ✅ 정적 customer 페이지 생성
+      // ✅ 정적 HTML 페이지 생성
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
 
-      // 🔧 정적 HTML 생성 (fixed.js → customer/${subdomain}.js 방식 가능)
       const customerHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2731,7 +2732,6 @@ exports.autoDeploy = onRequest(
 
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
 
-      // ✅ 루트 index.html → 고객 페이지 리디렉션
       const redirectHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2764,7 +2764,7 @@ exports.autoDeploy = onRequest(
 
       logger.info(`📦 ZIP 압축 완료: ${zipPath}`);
 
-      // ✅ Netlify API로 업로드
+      // ✅ Netlify에 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
