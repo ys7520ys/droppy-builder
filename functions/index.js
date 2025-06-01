@@ -2645,8 +2645,6 @@
 //     }
 //   }
 // );
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2661,11 +2659,9 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
+const OUT_DIR = path.join(__dirname, "../out");
 const PROJECT_DIR = "/tmp/site-build";
-const STATIC_SOURCE = path.join(__dirname, "../.next/static");
-const STATIC_DEST = path.join(PROJECT_DIR, "_next/static");
-
-const SITE_ID = "295f8ded-3060-4815-996e-3ab7277e1526";
+const SITE_ID = "295f8ded-3060-4815-996e-3ab7277e1526"; // hellohel 프로젝트 ID
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
@@ -2684,7 +2680,7 @@ exports.autoDeploy = onRequest(
 
       const subdomain = domain.split(".")[0];
 
-      // 🔍 Firestore 주문 조회
+      // 🔍 주문 데이터 조회
       const snapshot = await db.collection("orders").where("domain", "==", domain).limit(1).get();
       if (snapshot.empty) {
         return res.status(404).json({ message: "❌ 주문 정보 없음" });
@@ -2693,55 +2689,21 @@ exports.autoDeploy = onRequest(
       const doc = snapshot.docs[0];
       const orderData = doc.data();
 
-      // 📂 디렉토리 초기화 및 생성
+      // 📂 빌드 디렉토리 복사
       fsExtra.removeSync(PROJECT_DIR);
-      fsExtra.mkdirpSync(STATIC_DEST);
+      fsExtra.mkdirpSync(PROJECT_DIR);
+      fsExtra.copySync(OUT_DIR, PROJECT_DIR);
+      logger.info("✅ out 폴더 복사 완료");
 
-      if (fs.existsSync(STATIC_SOURCE)) {
-        fsExtra.copySync(STATIC_SOURCE, STATIC_DEST);
-        logger.info("✅ .next/static 복사 완료");
-      }
-
+      // 🔁 고객별 폴더 내 data.json 저장
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
-
-      // 📄 HTML 생성
-      const customerHTML = `
-<!DOCTYPE html>
-<html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
-    <script defer src="/_next/static/chunks/main.js"></script>
-    <script defer src="/_next/static/chunks/pages/_app.js"></script>
-    <script defer src="/_next/static/chunks/pages/customer/[id].js"></script>
-    <link rel="stylesheet" href="/_next/static/css/app.css" />
-  </head>
-  <body style="margin:0;background:#000;color:#fff;">
-    <div id="__next">🔄 고객 콘텐츠 로딩 중...</div>
-  </body>
-</html>`.trim();
-      fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
-
       fs.writeFileSync(
         path.join(customerDir, "data.json"),
         JSON.stringify(orderData, null, 2),
         "utf-8"
       );
-
-      const redirectHTML = `
-<!DOCTYPE html>
-<html lang="ko">
-  <head>
-    <meta http-equiv="refresh" content="0;url=/customer/${subdomain}/" />
-    <title>Redirecting...</title>
-  </head>
-  <body style="background:#000; color:#fff; text-align:center; padding:100px;">
-    ⏳ 고객 페이지로 이동 중입니다...
-  </body>
-</html>`.trim();
-      fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
+      logger.info("📁 고객용 data.json 생성 완료");
 
       // 📦 ZIP 압축
       const zipPath = `/tmp/${orderId || "site"}.zip`;
@@ -2749,19 +2711,15 @@ exports.autoDeploy = onRequest(
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       archive.pipe(output);
-      archive.directory(path.join(PROJECT_DIR, "_next"), "_next");
-      archive.directory(path.join(PROJECT_DIR, "customer"), "customer");
-      archive.file(path.join(PROJECT_DIR, "index.html"), { name: "index.html" });
-
+      archive.directory(PROJECT_DIR, false); // 루트에 전체 포함
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
         output.on("error", reject);
         archive.finalize();
       });
-
       logger.info(`📦 ZIP 압축 완료: ${zipPath}`);
 
-      // 🌐 Netlify 도메인 자동 등록
+      // 🌐 Netlify 도메인 등록
       await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/domains`, {
         method: "POST",
         headers: {
@@ -2770,9 +2728,9 @@ exports.autoDeploy = onRequest(
         },
         body: JSON.stringify({ name: domain }),
       });
-      logger.info(`🌐 Netlify 도메인 등록 완료: ${domain}`);
+      logger.info(`🌐 도메인 등록 완료: ${domain}`);
 
-      // 🚀 Netlify 업로드
+      // 🚀 Netlify 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
