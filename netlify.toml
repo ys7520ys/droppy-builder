@@ -1,13 +1,13 @@
 [build]
-command = "npm run build"
-publish = "out"
-functions = "functions"
+command = "npm run build"         
+publish = "out"                  
+functions = "functions"          
 
 [functions]
-node_bundler = "esbuild"
+node_bundler = "esbuild"           
 
 [[plugins]]
-package = "@netlify/plugin-functions-install-core"
+package = "@netlify/plugin-functions-install-core" 
 
 [[redirects]]
 from = "/*"
