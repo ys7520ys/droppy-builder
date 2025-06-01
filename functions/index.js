@@ -2772,7 +2772,7 @@ exports.autoDeploy = onRequest(
       });
       logger.info(`🌐 Netlify 도메인 등록 완료: ${domain}`);
 
-      // 🚀 Netlify에 업로드
+      // 🚀 Netlify 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
