@@ -2665,7 +2665,7 @@ const PROJECT_DIR = "/tmp/site-build";
 const STATIC_SOURCE = path.join(__dirname, "../.next/static");
 const STATIC_DEST = path.join(PROJECT_DIR, "_next/static");
 
-const SITE_ID = "2aff56be-e5a4-47da-90f3-e81068b0e958";
+const SITE_ID = "295f8ded-3060-4815-996e-3ab7277e1526";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
 exports.autoDeploy = onRequest(
