@@ -2648,11 +2648,6 @@
 
 
 
-
-
-
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2667,7 +2662,8 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-const PROJECT_DIR = path.join(__dirname, "../out"); // ✅ 상대 경로로 안전하게 설정
+// ✅ Cloud Functions 전용 경로 (쓰기 가능)
+const PROJECT_DIR = "/tmp/site-build";
 const STATIC_SOURCE = path.join(__dirname, "../.next/static");
 const STATIC_DEST = path.join(PROJECT_DIR, "_next/static");
 
@@ -2699,7 +2695,7 @@ exports.autoDeploy = onRequest(
       const orderId = doc.id;
       const orderData = doc.data();
 
-      // ✅ 정리 및 생성
+      // ✅ /tmp 디렉토리 초기화
       fsExtra.removeSync(PROJECT_DIR);
       fsExtra.mkdirpSync(STATIC_DEST);
 
@@ -2709,7 +2705,7 @@ exports.autoDeploy = onRequest(
         logger.info("✅ .next/static 복사 완료");
       }
 
-      // ✅ 정적 HTML 페이지 생성
+      // ✅ 정적 HTML 생성
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
 
@@ -2764,7 +2760,7 @@ exports.autoDeploy = onRequest(
 
       logger.info(`📦 ZIP 압축 완료: ${zipPath}`);
 
-      // ✅ Netlify에 업로드
+      // ✅ Netlify 업로드
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
