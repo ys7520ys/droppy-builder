@@ -2662,7 +2662,7 @@ const fetch = require("node-fetch");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// ✅ Cloud Functions 전용 경로 (쓰기 가능)
+// ✅ Cloud Functions 전용 경로
 const PROJECT_DIR = "/tmp/site-build";
 const STATIC_SOURCE = path.join(__dirname, "../.next/static");
 const STATIC_DEST = path.join(PROJECT_DIR, "_next/static");
@@ -2678,7 +2678,7 @@ exports.autoDeploy = onRequest(
   async (req, res) => {
     try {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { domain } = body;
+      const { domain, orderId } = body;
 
       if (!domain || typeof domain !== "string" || !domain.includes(".")) {
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
@@ -2692,20 +2692,19 @@ exports.autoDeploy = onRequest(
       }
 
       const doc = snapshot.docs[0];
-      const orderId = doc.id;
       const orderData = doc.data();
 
-      // ✅ /tmp 디렉토리 초기화
+      // 🔄 디렉터리 초기화
       fsExtra.removeSync(PROJECT_DIR);
       fsExtra.mkdirpSync(STATIC_DEST);
 
-      // ✅ static 복사
+      // 📁 .next/static 복사
       if (fs.existsSync(STATIC_SOURCE)) {
         fsExtra.copySync(STATIC_SOURCE, STATIC_DEST);
         logger.info("✅ .next/static 복사 완료");
       }
 
-      // ✅ 정적 HTML 생성
+      // 📁 정적 HTML 생성
       const customerDir = path.join(PROJECT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
 
@@ -2728,6 +2727,14 @@ exports.autoDeploy = onRequest(
 
       fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
 
+      // ✅ JSON 데이터도 함께 저장
+      fs.writeFileSync(
+        path.join(customerDir, "data.json"),
+        JSON.stringify(orderData, null, 2),
+        "utf-8"
+      );
+
+      // ✅ 루트 리디렉션 페이지
       const redirectHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -2743,7 +2750,7 @@ exports.autoDeploy = onRequest(
       fs.writeFileSync(path.join(PROJECT_DIR, "index.html"), redirectHTML, "utf-8");
 
       // ✅ ZIP 압축
-      const zipPath = `/tmp/${orderId}.zip`;
+      const zipPath = `/tmp/${orderId || "site"}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
