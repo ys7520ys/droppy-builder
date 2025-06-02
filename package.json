@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "export": "next export",
     "autobuild": "node preBuildAndCopy.js",
-    "autodeploy": "npm run build && cp -R .next/static functions/out/_next/static && firebase deploy --only functions"
+    "prepare-deploy": "rimraf functions/out && npm run build && cp -r out/* functions/out/"
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -25,7 +26,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "eslint": "^9",
-    "eslint-config-next": "15.3.2"
+    "eslint-config-next": "15.3.2",
+    "rimraf": "^5.0.10"
   },
   "engines": {
     "node": "18.x"
