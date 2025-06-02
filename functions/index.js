@@ -2827,7 +2827,7 @@ const fsExtra = require("fs-extra");
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-const OUT_DIR = path.join(__dirname, "out"); // ✅ 정적 export 결과물
+const OUT_DIR = path.join(__dirname, "out"); // ✅ export된 결과물이 위치한 폴더
 const SITE_ID = "295f8ded-3060-4815-996e-3ab7277e1526";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
@@ -2845,18 +2845,53 @@ exports.autoDeploy = onRequest(
         return res.status(400).json({ message: "❗ 유효하지 않은 도메인 형식입니다" });
       }
 
+      const subdomain = domain.split(".")[0];
+
       const snapshot = await db.collection("orders").where("domain", "==", domain).limit(1).get();
       if (snapshot.empty) {
         return res.status(404).json({ message: "❌ 주문 정보 없음" });
       }
 
-      // ✅ ZIP 압축
+      const orderData = snapshot.docs[0].data();
+
+      // ✅ /functions/out/customer/서브도메인/index.html 생성
+      const customerDir = path.join(OUT_DIR, "customer", subdomain);
+      fsExtra.mkdirpSync(customerDir);
+
+      const customerHTML = `
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${orderData.pages?.[0]?.components?.[0]?.title || "Droppy"}</title>
+    <script defer src="/_next/static/chunks/main.js"></script>
+    <script defer src="/_next/static/chunks/pages/_app.js"></script>
+    <script defer src="/_next/static/chunks/pages/customer/[id].js"></script>
+    <link rel="stylesheet" href="/_next/static/css/app.css" />
+  </head>
+  <body style="margin:0;background:#000;color:#fff;">
+    <div id="__next">🔄 고객 콘텐츠 로딩 중...</div>
+  </body>
+</html>
+      `.trim();
+
+      fs.writeFileSync(path.join(customerDir, "index.html"), customerHTML, "utf-8");
+
+      // ✅ JSON 백업도 같이 생성 (선택)
+      fs.writeFileSync(
+        path.join(customerDir, "data.json"),
+        JSON.stringify(orderData, null, 2),
+        "utf-8"
+      );
+
+      // ✅ ZIP 압축 (전체 out 폴더 압축)
       const zipPath = `/tmp/${orderId || "site"}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       archive.pipe(output);
-      archive.directory(OUT_DIR, false); // ✅ out 폴더 내 내용만 압축됨
+      archive.directory(OUT_DIR, false); // out 내부 전체 복사
 
       await new Promise((resolve, reject) => {
         output.on("close", resolve);
@@ -2877,7 +2912,7 @@ exports.autoDeploy = onRequest(
       });
       logger.info(`🌐 Netlify 도메인 등록 완료: ${domain}`);
 
-      // ✅ Netlify 배포
+      // ✅ Netlify에 ZIP 업로드 → 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2897,6 +2932,7 @@ exports.autoDeploy = onRequest(
         message: "🎉 배포 성공!",
         previewUrl: deployJson.deploy_ssl_url,
         customerUrl: `https://${domain}`,
+        subdomainPath: `/customer/${subdomain}/`,
       });
     } catch (err) {
       logger.error("🔥 오류 발생:", err.stack || err);
@@ -2905,7 +2941,7 @@ exports.autoDeploy = onRequest(
   }
 );
 
-// ✅ 그대로 유지되는 getPageData 함수
+// ✅ 데이터만 조회하는 함수 (수정 없음)
 exports.getPageData = onRequest(
   {
     cors: true,
