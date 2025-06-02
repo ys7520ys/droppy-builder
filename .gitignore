@@ -42,3 +42,4 @@ next-env.d.ts
 
 # .gitignore 맨 아래 추가
 serviceAccountKey.json
+/functions/out

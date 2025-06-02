@@ -9,7 +9,6 @@
     "lint": "next lint",
     "export": "next export",
     "autobuild": "node preBuildAndCopy.js",
-    "prepare-deploy": "rimraf functions/out && npm run build && cp -r out/* functions/out/"
   },
   "dependencies": {
     "archiver": "^7.0.1",

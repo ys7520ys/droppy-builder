@@ -2807,11 +2807,6 @@
 
 
 
-
-
-
-
-
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -2822,13 +2817,14 @@ const path = require("path");
 const archiver = require("archiver");
 const fetch = require("node-fetch");
 const fsExtra = require("fs-extra");
+const { execSync } = require("child_process");
 
 initializeApp({ credential: applicationDefault() });
 const db = getFirestore();
 
-// 🔧 경로 정의
-const EXPORT_DIR = path.join(__dirname, "../out"); // droppy-builder/out
-const OUT_DIR = path.join(__dirname, "out");       // functions/out
+const OUT_DIR = path.join(__dirname, "out"); // Functions 내부용 out
+const EXPORT_DIR = path.resolve(__dirname, "../droppy-builder/out"); // droppy-builder/out
+const BUILDER_DIR = path.resolve(__dirname, "../droppy-builder"); // 빌드 실행 위치
 const SITE_ID = "295f8ded-3060-4815-996e-3ab7277e1526";
 const NETLIFY_TOKEN = defineSecret("NETLIFY_TOKEN");
 
@@ -2855,12 +2851,20 @@ exports.autoDeploy = onRequest(
 
       const orderData = snapshot.docs[0].data();
 
-      // ✅ export된 최신 결과물을 functions/out 으로 복사
+      // ✅ 1. droppy-builder 안에서 next export 실행
+      logger.info("🔧 next export 시작");
+      execSync("npm run build && npx next export", {
+        cwd: BUILDER_DIR,
+        stdio: "inherit",
+      });
+      logger.info("✅ next export 완료");
+
+      // ✅ 2. export된 결과를 functions/out으로 복사
       fsExtra.emptyDirSync(OUT_DIR);
       fsExtra.copySync(EXPORT_DIR, OUT_DIR);
-      logger.info("📂 export → functions/out 복사 완료");
+      logger.info("📂 복사 완료: droppy-builder/out → functions/out");
 
-      // ✅ /functions/out/customer/{subdomain}/index.html 생성
+      // ✅ 3. /customer/{subdomain}/index.html 생성
       const customerDir = path.join(OUT_DIR, "customer", subdomain);
       fsExtra.mkdirpSync(customerDir);
 
@@ -2889,7 +2893,7 @@ exports.autoDeploy = onRequest(
         "utf-8"
       );
 
-      // ✅ ZIP 압축
+      // ✅ 4. ZIP 압축
       const zipPath = `/tmp/${orderId || "site"}.zip`;
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
@@ -2905,7 +2909,7 @@ exports.autoDeploy = onRequest(
 
       logger.info(`📦 ZIP 압축 완료: ${zipPath}`);
 
-      // ✅ Netlify 도메인 등록
+      // ✅ 5. Netlify 도메인 등록
       await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/domains`, {
         method: "POST",
         headers: {
@@ -2916,7 +2920,7 @@ exports.autoDeploy = onRequest(
       });
       logger.info(`🌐 Netlify 도메인 등록 완료: ${domain}`);
 
-      // ✅ Netlify ZIP 배포
+      // ✅ 6. Netlify 배포
       const zipBuffer = fs.readFileSync(zipPath);
       const deployRes = await fetch(`https://api.netlify.com/api/v1/sites/${SITE_ID}/deploys`, {
         method: "POST",
@@ -2945,7 +2949,7 @@ exports.autoDeploy = onRequest(
   }
 );
 
-// 🔎 getPageData (변경 없음)
+// 🔎 Firestore 데이터 조회 함수 (수정 없음)
 exports.getPageData = onRequest(
   {
     cors: true,
